@@ -1,8 +1,8 @@
-﻿{
-    "version":  "1.1.0",
-    "releaseDate":  "2026-08-30",
-    "changelog":  "Real-time Kernel ETW network packet accounting, 5th top-process network leaderboard card, DataGrid table resizing stability and auto horizontal scroll.",
-    "downloadUrl":  "https://github.com/Y-GMR/Clocky/releases/latest/download/Clocky.exe",
-    "mandatory":  false,
-    "sha256":  "01489392adc9e7641a1cd0ca01bde268f27b16ed8906165fc9cc57ae7be3ea27"
+{
+  "version": "1.1.0",
+  "releaseDate": "2026-08-30",
+  "changelog": "Real-time Kernel ETW network packet accounting, 5th top-process network leaderboard card, DataGrid table resizing stability and auto horizontal scroll.",
+  "downloadUrl": "https://github.com/Y-GMR/Clocky/releases/latest/download/Clocky.exe",
+  "mandatory": false,
+  "sha256": "d741e4ee13784714ec5b5552f57254c524dcabce8ad13d37d731bddb4b47020d"
 }
