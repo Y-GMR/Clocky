@@ -19,7 +19,7 @@ public class UpdateManifest
 
 public static class UpdateManager
 {
-    public static readonly Version CurrentVersion = new Version(1, 0, 3);
+    public static readonly Version CurrentVersion = new Version(1, 0, 4);
     private static readonly HttpClient _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
 
     public static async Task<(bool HasUpdate, UpdateManifest? Manifest, string? Message)> CheckForUpdatesAsync(string feedUrl)

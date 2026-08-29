@@ -6,6 +6,13 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ---
 
+## [1.0.4] - 2026-08-29
+
+### Security
+- Compiled out internal automation test sockets in Release builds (`#if DEBUG`), ensuring zero listening TCP ports in production distribution.
+
+---
+
 ## [1.0.3] - 2026-08-29
 
 ### Changed
