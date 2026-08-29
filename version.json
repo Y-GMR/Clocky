@@ -1,7 +1,7 @@
 {
-  "version": "1.0.5",
+  "version": "1.0.6",
   "releaseDate": "2026-08-29",
-  "changelog": "Dynamically query hardware battery capacity and ACPI metrics across laptop vendors.",
+  "changelog": "Added Windows boot auto-start and start-minimized preferences, and optimized update download deduplication.",
   "downloadUrl": "https://github.com/Y-GMR/Clocky/releases/latest/download/Clocky.exe",
   "mandatory": false
 }

@@ -2783,6 +2783,14 @@ public partial class MainWindow : Window
             var (hasUpdate, manifest, msg) = await UpdateManager.CheckForUpdatesAsync(_config.UpdateFeedUrl);
             if (hasUpdate && manifest != null && !string.IsNullOrEmpty(manifest.DownloadUrl))
             {
+                if (!string.IsNullOrEmpty(_stagedUpdateExePath) && File.Exists(_stagedUpdateExePath))
+                {
+                    if (BadgeUpdateAvailable != null) BadgeUpdateAvailable.Visibility = Visibility.Visible;
+                    if (TxtUpdateBadge != null) TxtUpdateBadge.Text = $"Update v{manifest.Version} Ready (Click to Restart)";
+                    TxtUpdateStatus.Text = $"Update v{manifest.Version} is already downloaded and ready to apply! Click the banner below.";
+                    return;
+                }
+
                 TxtUpdateStatus.Text = $"Downloading v{manifest.Version}...";
                 string targetExe = await UpdateManager.DownloadUpdateAsync(manifest.DownloadUrl);
                 _stagedUpdateExePath = targetExe;

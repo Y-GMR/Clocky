@@ -6,6 +6,17 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ---
 
+## [1.0.6] - 2026-08-29
+
+### Added
+- Added `Start Clocky automatically on Windows boot` toggle in Preferences (Tab 7) using unprivileged user run registry.
+- Added `Start minimized to system tray on launch` toggle and `--minimized` launch argument.
+
+### Changed
+- Added staged update download deduplication to prevent redundant network downloads if an update is already staged locally.
+
+---
+
 ## [1.0.5] - 2026-08-29
 
 ### Changed
