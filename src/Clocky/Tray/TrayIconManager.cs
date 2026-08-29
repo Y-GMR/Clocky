@@ -40,7 +40,7 @@ public class TrayIconManager : IDisposable
         {
             _mainAppIcon = new ClockyTrayIcon(100, "MainApp");
             _mainAppIcon.ContextMenuStrip = BuildMainAppContextMenu();
-            _mainAppIcon.SetIcon(CreateClockyAppIcon(), "Clocky — Hardware Telemetry");
+            _mainAppIcon.SetIcon(CreateClockyAppIcon(), "Clocky");
             _mainAppIcon.LeftClick += () => _onToggleMainWindow();
         }
         else

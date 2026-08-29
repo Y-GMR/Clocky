@@ -114,7 +114,7 @@ public static class GlobalExceptionHandler
         sb.AppendLine("# Clocky Diagnostic Crash Report");
         sb.AppendLine($"**Timestamp:** {DateTime.Now:yyyy-MM-dd HH:mm:ss.fff zzz}");
         sb.AppendLine($"**Source Context:** {sourceContext}");
-        sb.AppendLine($"**Clocky Version:** 1.0.0 (Release standalone)");
+        sb.AppendLine($"**Clocky Version:** {UpdateManager.CurrentVersion} (Release standalone)");
         sb.AppendLine($"**Process ID:** {Process.GetCurrentProcess().Id}");
         sb.AppendLine();
         sb.AppendLine("## System Environment");

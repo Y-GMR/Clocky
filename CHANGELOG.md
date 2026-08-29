@@ -6,6 +6,13 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ---
 
+## [1.0.1] - 2026-08-29
+
+### Changed
+- Simplified main application system tray icon tooltip from `Clocky — Hardware Telemetry` to `Clocky` to reduce taskbar tooltip clutter.
+
+---
+
 ## [1.0.0] - 2026-08-29
 
 ### Initial Release
