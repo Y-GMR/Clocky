@@ -13,6 +13,9 @@ dist/
 *.userosscache
 *.sln.docstates
 *.suo
+AGENTS.md
+GEMINI.md
+.agents/
 
 ## Backups & Scratch Folders
 backups/
