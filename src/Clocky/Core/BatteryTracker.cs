@@ -36,9 +36,42 @@ public class BatteryTracker
     public float CumulativeChargedWh => _state.CumulativeChargedWh;
     public IReadOnlyList<BatteryPoint> History => _state.Points;
 
+    public static string GetBatteryHistoryFilePath()
+    {
+        string appDataFolder = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Clocky");
+        try
+        {
+            Directory.CreateDirectory(appDataFolder);
+        }
+        catch { }
+
+        string targetFile = Path.Combine(appDataFolder, "battery_history.json");
+
+        // Automatically migrate legacy file located next to executable if present
+        try
+        {
+            string legacyFile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "battery_history.json");
+            if (File.Exists(legacyFile))
+            {
+                if (!File.Exists(targetFile))
+                {
+                    File.Move(legacyFile, targetFile);
+                }
+                else
+                {
+                    File.Delete(legacyFile);
+                }
+            }
+        }
+        catch { }
+
+        return targetFile;
+    }
+
     public BatteryTracker()
     {
-        _filePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "battery_history.json");
+        _filePath = GetBatteryHistoryFilePath();
         Load();
         QueryWmiCycleCount();
     }
@@ -59,7 +92,7 @@ public class BatteryTracker
         }
         catch
         {
-            if (_state.HardwareCycleCount == 0) _state.HardwareCycleCount = 14;
+            if (_state.HardwareCycleCount == 0) _state.HardwareCycleCount = 0;
         }
     }
 
@@ -142,7 +175,11 @@ public class BatteryTracker
     {
         try
         {
-            string json = JsonSerializer.Serialize(_state, new JsonSerializerOptions { WriteIndented = false });
+            var options = new JsonSerializerOptions
+            {
+                WriteIndented = true
+            };
+            string json = JsonSerializer.Serialize(_state, options);
             File.WriteAllText(_filePath, json);
         }
         catch { }

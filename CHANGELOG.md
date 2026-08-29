@@ -6,6 +6,14 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ---
 
+## [1.0.3] - 2026-08-29
+
+### Changed
+- Relocated `battery_history.json` persistence from the executable working directory to `%LocalAppData%\Clocky\`.
+- Enabled indented, human-readable JSON serialization for battery telemetry history.
+
+---
+
 ## [1.0.2] - 2026-08-29
 
 ### Added

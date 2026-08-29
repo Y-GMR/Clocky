@@ -1,7 +1,7 @@
 {
-  "version": "1.0.2",
+  "version": "1.0.3",
   "releaseDate": "2026-08-29",
-  "changelog": "Added automatic configuration migration and URL sanitization for update feeds.",
+  "changelog": "Relocated battery history persistence to user LocalAppData with formatted human-readable JSON.",
   "downloadUrl": "https://github.com/Y-GMR/Clocky/releases/latest/download/Clocky.exe",
   "mandatory": false
 }
