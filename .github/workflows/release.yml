@@ -33,6 +33,9 @@ jobs:
           -o dist/
         $hash = (Get-FileHash -Path "dist/Clocky.exe" -Algorithm SHA256).Hash.ToLower()
         "$hash  Clocky.exe" | Out-File -FilePath "dist/SHA256SUMS.txt" -Encoding ascii
+        $v = Get-Content "version.json" | ConvertFrom-Json
+        $v | Add-Member -MemberType NoteProperty -Name "sha256" -Value $hash -Force
+        $v | ConvertTo-Json -Depth 10 | Set-Content -Path "version.json" -Encoding UTF8
 
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v2

@@ -114,17 +114,23 @@ public static class SystemHardwareHelper
     {
         if (string.IsNullOrWhiteSpace(fullName)) return "CPU";
         string name = fullName
-            .Replace("13th Gen ", "")
-            .Replace("14th Gen ", "")
-            .Replace("12th Gen ", "")
+            .Replace("Intel(R) Core(TM) Ultra ", "Core Ultra ")
+            .Replace("Intel Core Ultra ", "Core Ultra ")
             .Replace("Intel(R) Core(TM) ", "")
             .Replace("Intel Core ", "")
             .Replace("Intel ", "")
             .Replace("AMD Ryzen ", "Ryzen ")
+            .Replace("14th Gen ", "")
+            .Replace("13th Gen ", "")
+            .Replace("12th Gen ", "")
+            .Replace("11th Gen ", "")
+            .Replace("10th Gen ", "")
             .Replace(" 8-Core Processor", "")
             .Replace(" 6-Core Processor", "")
             .Replace(" 12-Core Processor", "")
             .Replace(" 16-Core Processor", "")
+            .Replace(" 24-Core Processor", "")
+            .Replace(" 32-Core Processor", "")
             .Replace(" Processor", "")
             .Replace(" processor", "")
             .Trim();
@@ -142,6 +148,7 @@ public static class SystemHardwareHelper
             .Replace("AMD Radeon ", "")
             .Replace("AMD ", "")
             .Replace("Intel(R) Arc(TM) ", "Arc ")
+            .Replace("Intel Arc ", "Arc ")
             .Replace("Intel(R) ", "")
             .Replace(" Graphics", "")
             .Trim();

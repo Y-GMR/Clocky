@@ -235,14 +235,22 @@ public class HardwareEngine : IDisposable
 
         try
         {
-            _computer.Accept(_visitor);
+            try
+            {
+                _computer.Accept(_visitor);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[Clocky] LibreHardwareMonitor visitor notice: {ex.Message}");
+            }
+
             var snapshot = ExtractSnapshot();
             CurrentSnapshot = snapshot;
             TelemetryUpdated?.Invoke(snapshot);
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[Clocky] Polling error: {ex.Message}");
+            GlobalExceptionHandler.LogCrashToFile(ex, "HardwareEngine.Poll");
         }
         finally
         {
@@ -256,19 +264,25 @@ public class HardwareEngine : IDisposable
         var allSensors = new List<SensorRecord>();
 
         // System Metadata (Universal & Personalized)
-        snap.SystemModelName = SystemHardwareHelper.GetSystemModelName();
-        var (ramType, ramSpeed, _, _) = SystemHardwareHelper.GetRamInfo();
-        snap.RamTypeStr = ramType;
-        snap.RamSpeedMt = ramSpeed;
+        try
+        {
+            snap.SystemModelName = SystemHardwareHelper.GetSystemModelName();
+            var (ramType, ramSpeed, _, _) = SystemHardwareHelper.GetRamInfo();
+            snap.RamTypeStr = ramType;
+            snap.RamSpeedMt = ramSpeed;
+        }
+        catch { }
 
         // 1. CPU Telemetry
-        var cpu = _computer.Hardware.FirstOrDefault(h => h.HardwareType == HardwareType.Cpu);
-        if (cpu != null)
+        try
         {
-            snap.CpuName = cpu.Name;
-            var coreLoads = new Dictionary<int, float>();
-            var coreTemps = new Dictionary<int, float>();
-            var coreClocks = new Dictionary<int, float>();
+            var cpu = _computer.Hardware.FirstOrDefault(h => h.HardwareType == HardwareType.Cpu);
+            if (cpu != null)
+            {
+                snap.CpuName = cpu.Name;
+                var coreLoads = new Dictionary<int, float>();
+                var coreTemps = new Dictionary<int, float>();
+                var coreClocks = new Dictionary<int, float>();
 
             foreach (var sensor in cpu.Sensors)
             {
@@ -471,280 +485,300 @@ public class HardwareEngine : IDisposable
                 }
             }
         }
+    }
+    catch { }
 
         // 2. GPU Telemetry
-        var gpu = _computer.Hardware.FirstOrDefault(h => h.HardwareType == HardwareType.GpuNvidia)
-               ?? _computer.Hardware.FirstOrDefault(h => h.HardwareType == HardwareType.GpuAmd)
-               ?? _computer.Hardware.FirstOrDefault(h => h.HardwareType == HardwareType.GpuIntel);
-
-        if (gpu != null)
+        try
         {
-            snap.GpuAvailable = true;
-            snap.GpuName = gpu.Name;
+            var gpu = _computer.Hardware.FirstOrDefault(h => h.HardwareType == HardwareType.GpuNvidia)
+                   ?? _computer.Hardware.FirstOrDefault(h => h.HardwareType == HardwareType.GpuAmd)
+                   ?? _computer.Hardware.FirstOrDefault(h => h.HardwareType == HardwareType.GpuIntel);
 
-            foreach (var sensor in gpu.Sensors.Concat(gpu.SubHardware.SelectMany(sh => { sh.Update(); return sh.Sensors; })))
+            if (gpu != null)
             {
-                if (!sensor.Value.HasValue) continue;
-                var val = sensor.Value.Value;
-                RecordSensor($"GPU ({snap.GpuName})", sensor.Name, val, GetSensorUnit(sensor.SensorType), allSensors);
+                snap.GpuAvailable = true;
+                snap.GpuName = gpu.Name;
 
-                switch (sensor.SensorType)
+                foreach (var sensor in gpu.Sensors.Concat(gpu.SubHardware.SelectMany(sh => { sh.Update(); return sh.Sensors; })))
                 {
-                    case SensorType.Temperature:
-                        if (sensor.Name.Contains("Core", StringComparison.OrdinalIgnoreCase) || sensor.Name.Equals("GPU", StringComparison.OrdinalIgnoreCase))
-                            snap.GpuCoreTemp = val;
-                        else if (sensor.Name.Contains("Hot Spot", StringComparison.OrdinalIgnoreCase) || sensor.Name.Contains("Hotspot", StringComparison.OrdinalIgnoreCase))
-                            snap.GpuHotspotTemp = val;
-                        else if (sensor.Name.Contains("Memory", StringComparison.OrdinalIgnoreCase) || sensor.Name.Contains("VRAM", StringComparison.OrdinalIgnoreCase) || sensor.Name.Contains("Junction", StringComparison.OrdinalIgnoreCase))
-                            snap.GpuMemoryTemp = val;
-                        break;
+                    if (!sensor.Value.HasValue) continue;
+                    var val = sensor.Value.Value;
+                    RecordSensor($"GPU ({snap.GpuName})", sensor.Name, val, GetSensorUnit(sensor.SensorType), allSensors);
 
-                    case SensorType.Power:
-                        if (sensor.Name.Contains("Package", StringComparison.OrdinalIgnoreCase) ||
-                            sensor.Name.Contains("Board", StringComparison.OrdinalIgnoreCase) ||
-                            sensor.Name.Contains("Total", StringComparison.OrdinalIgnoreCase) ||
-                            sensor.Name.Contains("GPU", StringComparison.OrdinalIgnoreCase))
-                        {
-                            snap.GpuPowerDraw = val;
-                        }
-                        break;
+                    switch (sensor.SensorType)
+                    {
+                        case SensorType.Temperature:
+                            if (sensor.Name.Contains("Core", StringComparison.OrdinalIgnoreCase) || sensor.Name.Equals("GPU", StringComparison.OrdinalIgnoreCase))
+                                snap.GpuCoreTemp = val;
+                            else if (sensor.Name.Contains("Hot Spot", StringComparison.OrdinalIgnoreCase) || sensor.Name.Contains("Hotspot", StringComparison.OrdinalIgnoreCase))
+                                snap.GpuHotspotTemp = val;
+                            else if (sensor.Name.Contains("Memory", StringComparison.OrdinalIgnoreCase) || sensor.Name.Contains("VRAM", StringComparison.OrdinalIgnoreCase) || sensor.Name.Contains("Junction", StringComparison.OrdinalIgnoreCase))
+                                snap.GpuMemoryTemp = val;
+                            break;
 
-                    case SensorType.Load:
-                        if (sensor.Name.Equals("GPU Core", StringComparison.OrdinalIgnoreCase))
-                            snap.GpuCoreUtil = val;
-                        else if (sensor.Name.Contains("3D", StringComparison.OrdinalIgnoreCase))
-                            snap.Gpu3dUtil = Math.Max(snap.Gpu3dUtil, val);
-                        else if (sensor.Name.Contains("Compute", StringComparison.OrdinalIgnoreCase) || sensor.Name.Contains("VR", StringComparison.OrdinalIgnoreCase) || sensor.Name.Contains("OFA", StringComparison.OrdinalIgnoreCase))
-                            snap.GpuComputeUtil = Math.Max(snap.GpuComputeUtil, val);
-                        else if (sensor.Name.Contains("Copy", StringComparison.OrdinalIgnoreCase) || sensor.Name.Contains("DMA", StringComparison.OrdinalIgnoreCase))
-                            snap.GpuCopyUtil = Math.Max(snap.GpuCopyUtil, val);
-                        else if (sensor.Name.Contains("Memory Controller", StringComparison.OrdinalIgnoreCase) || sensor.Name.Equals("GPU Memory", StringComparison.OrdinalIgnoreCase))
-                            snap.GpuMemoryControllerUtil = val;
-                        else if (sensor.Name.Contains("Encoder", StringComparison.OrdinalIgnoreCase) || sensor.Name.Contains("Video Encode", StringComparison.OrdinalIgnoreCase))
-                            snap.GpuVideoEncoderUtil = Math.Max(snap.GpuVideoEncoderUtil, val);
-                        else if (sensor.Name.Contains("Decoder", StringComparison.OrdinalIgnoreCase) || sensor.Name.Contains("Video Decode", StringComparison.OrdinalIgnoreCase) || sensor.Name.Contains("Video Engine", StringComparison.OrdinalIgnoreCase) || sensor.Name.Contains("JPEG", StringComparison.OrdinalIgnoreCase))
-                            snap.GpuVideoDecoderUtil = Math.Max(snap.GpuVideoDecoderUtil, val);
-                        break;
+                        case SensorType.Power:
+                            if (sensor.Name.Contains("Package", StringComparison.OrdinalIgnoreCase) ||
+                                sensor.Name.Contains("Board", StringComparison.OrdinalIgnoreCase) ||
+                                sensor.Name.Contains("Total", StringComparison.OrdinalIgnoreCase) ||
+                                sensor.Name.Contains("GPU", StringComparison.OrdinalIgnoreCase))
+                            {
+                                snap.GpuPowerDraw = val;
+                            }
+                            break;
 
-                    case SensorType.Throughput:
-                        if (sensor.Name.Contains("PCIe Rx", StringComparison.OrdinalIgnoreCase) || sensor.Name.Contains("Download", StringComparison.OrdinalIgnoreCase))
-                            snap.GpuPcieRxMbps = val / (1024f * 1024f); // bytes/sec to MB/s
-                        else if (sensor.Name.Contains("PCIe Tx", StringComparison.OrdinalIgnoreCase) || sensor.Name.Contains("Upload", StringComparison.OrdinalIgnoreCase))
-                            snap.GpuPcieTxMbps = val / (1024f * 1024f);
-                        break;
+                        case SensorType.Load:
+                            if (sensor.Name.Equals("GPU Core", StringComparison.OrdinalIgnoreCase))
+                                snap.GpuCoreUtil = val;
+                            else if (sensor.Name.Contains("3D", StringComparison.OrdinalIgnoreCase))
+                                snap.Gpu3dUtil = Math.Max(snap.Gpu3dUtil, val);
+                            else if (sensor.Name.Contains("Compute", StringComparison.OrdinalIgnoreCase) || sensor.Name.Contains("VR", StringComparison.OrdinalIgnoreCase) || sensor.Name.Contains("OFA", StringComparison.OrdinalIgnoreCase))
+                                snap.GpuComputeUtil = Math.Max(snap.GpuComputeUtil, val);
+                            else if (sensor.Name.Contains("Copy", StringComparison.OrdinalIgnoreCase) || sensor.Name.Contains("DMA", StringComparison.OrdinalIgnoreCase))
+                                snap.GpuCopyUtil = Math.Max(snap.GpuCopyUtil, val);
+                            else if (sensor.Name.Contains("Memory Controller", StringComparison.OrdinalIgnoreCase) || sensor.Name.Equals("GPU Memory", StringComparison.OrdinalIgnoreCase))
+                                snap.GpuMemoryControllerUtil = val;
+                            else if (sensor.Name.Contains("Encoder", StringComparison.OrdinalIgnoreCase) || sensor.Name.Contains("Video Encode", StringComparison.OrdinalIgnoreCase))
+                                snap.GpuVideoEncoderUtil = Math.Max(snap.GpuVideoEncoderUtil, val);
+                            else if (sensor.Name.Contains("Decoder", StringComparison.OrdinalIgnoreCase) || sensor.Name.Contains("Video Decode", StringComparison.OrdinalIgnoreCase) || sensor.Name.Contains("Video Engine", StringComparison.OrdinalIgnoreCase) || sensor.Name.Contains("JPEG", StringComparison.OrdinalIgnoreCase))
+                                snap.GpuVideoDecoderUtil = Math.Max(snap.GpuVideoDecoderUtil, val);
+                            break;
 
-                    case SensorType.Voltage:
-                        if (sensor.Name.Contains("GPU", StringComparison.OrdinalIgnoreCase))
-                            snap.GpuVoltage = val;
-                        break;
+                        case SensorType.Throughput:
+                            if (sensor.Name.Contains("PCIe Rx", StringComparison.OrdinalIgnoreCase) || sensor.Name.Contains("Download", StringComparison.OrdinalIgnoreCase))
+                                snap.GpuPcieRxMbps = val / (1024f * 1024f); // bytes/sec to MB/s
+                            else if (sensor.Name.Contains("PCIe Tx", StringComparison.OrdinalIgnoreCase) || sensor.Name.Contains("Upload", StringComparison.OrdinalIgnoreCase))
+                                snap.GpuPcieTxMbps = val / (1024f * 1024f);
+                            break;
 
-                    case SensorType.Clock:
-                        if (sensor.Name.Contains("Core", StringComparison.OrdinalIgnoreCase) || sensor.Name.Contains("Graphics", StringComparison.OrdinalIgnoreCase))
-                            snap.GpuCoreClock = val;
-                        else if (sensor.Name.Contains("Memory", StringComparison.OrdinalIgnoreCase))
-                            snap.GpuMemoryClock = val;
-                        break;
+                        case SensorType.Voltage:
+                            if (sensor.Name.Contains("GPU", StringComparison.OrdinalIgnoreCase))
+                                snap.GpuVoltage = val;
+                            break;
 
-                    case SensorType.SmallData:
-                        if (sensor.Name.Contains("Shared Memory Used", StringComparison.OrdinalIgnoreCase) || sensor.Name.Contains("D3D Shared", StringComparison.OrdinalIgnoreCase))
-                        {
-                            snap.GpuSharedVramGb = val / 1024f;
-                        }
-                        else if (sensor.Name.Contains("GPU Memory Used", StringComparison.OrdinalIgnoreCase) || sensor.Name.Contains("Dedicated Memory Used", StringComparison.OrdinalIgnoreCase))
-                        {
-                            if (snap.GpuVramUsedGb == 0 || sensor.Name.Contains("GPU Memory Used", StringComparison.OrdinalIgnoreCase))
-                                snap.GpuVramUsedGb = val / 1024f;
-                        }
-                        else if (sensor.Name.Contains("GPU Memory Total", StringComparison.OrdinalIgnoreCase))
-                        {
-                            snap.GpuVramTotalGb = val / 1024f;
-                        }
-                        break;
+                        case SensorType.Clock:
+                            if (sensor.Name.Contains("Core", StringComparison.OrdinalIgnoreCase) || sensor.Name.Contains("Graphics", StringComparison.OrdinalIgnoreCase))
+                                snap.GpuCoreClock = val;
+                            else if (sensor.Name.Contains("Memory", StringComparison.OrdinalIgnoreCase))
+                                snap.GpuMemoryClock = val;
+                            break;
 
-                    case SensorType.Control:
-                    case SensorType.Fan:
-                        if (sensor.Name.Contains("Fan", StringComparison.OrdinalIgnoreCase))
-                            snap.GpuFanSpeedPercent = val;
-                        break;
+                        case SensorType.SmallData:
+                            if (sensor.Name.Contains("Shared Memory Used", StringComparison.OrdinalIgnoreCase) || sensor.Name.Contains("D3D Shared", StringComparison.OrdinalIgnoreCase))
+                            {
+                                snap.GpuSharedVramGb = val / 1024f;
+                            }
+                            else if (sensor.Name.Contains("GPU Memory Used", StringComparison.OrdinalIgnoreCase) || sensor.Name.Contains("Dedicated Memory Used", StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (snap.GpuVramUsedGb == 0 || sensor.Name.Contains("GPU Memory Used", StringComparison.OrdinalIgnoreCase))
+                                    snap.GpuVramUsedGb = val / 1024f;
+                            }
+                            else if (sensor.Name.Contains("GPU Memory Total", StringComparison.OrdinalIgnoreCase))
+                            {
+                                snap.GpuVramTotalGb = val / 1024f;
+                            }
+                            break;
+
+                        case SensorType.Control:
+                        case SensorType.Fan:
+                            if (sensor.Name.Contains("Fan", StringComparison.OrdinalIgnoreCase))
+                                snap.GpuFanSpeedPercent = val;
+                            break;
+                    }
                 }
+
+                if (snap.GpuHotspotTemp == 0 && snap.GpuMemoryTemp > 0)
+                    snap.GpuHotspotTemp = snap.GpuMemoryTemp;
+
+                if (snap.Gpu3dUtil == 0 && snap.GpuCoreUtil > 0)
+                    snap.Gpu3dUtil = snap.GpuCoreUtil;
+                else if (snap.GpuCoreUtil == 0 && snap.Gpu3dUtil > 0)
+                    snap.GpuCoreUtil = snap.Gpu3dUtil;
+
+                if (snap.GpuVramTotalGb > 0 && snap.GpuVramUsedGb > 0)
+                    snap.GpuVramPercent = (snap.GpuVramUsedGb / snap.GpuVramTotalGb) * 100f;
             }
-
-            if (snap.GpuHotspotTemp == 0 && snap.GpuMemoryTemp > 0)
-                snap.GpuHotspotTemp = snap.GpuMemoryTemp;
-
-            if (snap.Gpu3dUtil == 0 && snap.GpuCoreUtil > 0)
-                snap.Gpu3dUtil = snap.GpuCoreUtil;
-            else if (snap.GpuCoreUtil == 0 && snap.Gpu3dUtil > 0)
-                snap.GpuCoreUtil = snap.Gpu3dUtil;
-
-            if (snap.GpuVramTotalGb > 0 && snap.GpuVramUsedGb > 0)
-                snap.GpuVramPercent = (snap.GpuVramUsedGb / snap.GpuVramTotalGb) * 100f;
         }
+        catch { }
 
         // 3. Physical RAM
-        var memEx = GetWindowsPhysicalMemory();
-        if (memEx.TotalGb > 0)
+        try
         {
-            snap.RamTotalGb = memEx.TotalGb;
-            snap.RamUsedGb = memEx.UsedGb;
-            snap.RamAvailableGb = Math.Max(0f, memEx.TotalGb - memEx.UsedGb);
-            snap.RamUsagePercent = (snap.RamUsedGb / snap.RamTotalGb) * 100f;
-        }
-
-        var memHardware = _computer.Hardware.FirstOrDefault(h => h.HardwareType == HardwareType.Memory && !h.Name.Contains("Virtual", StringComparison.OrdinalIgnoreCase))
-                       ?? _computer.Hardware.FirstOrDefault(h => h.HardwareType == HardwareType.Memory);
-
-        if (memHardware != null)
-        {
-            foreach (var sensor in memHardware.Sensors)
+            var memEx = GetWindowsPhysicalMemory();
+            if (memEx.TotalGb > 0)
             {
-                if (!sensor.Value.HasValue) continue;
-                var val = sensor.Value.Value;
+                snap.RamTotalGb = memEx.TotalGb;
+                snap.RamUsedGb = memEx.UsedGb;
+                snap.RamAvailableGb = Math.Max(0f, memEx.TotalGb - memEx.UsedGb);
+                snap.RamUsagePercent = (snap.RamUsedGb / snap.RamTotalGb) * 100f;
+            }
 
-                if (sensor.SensorType == SensorType.Data)
+            var memHardware = _computer.Hardware.FirstOrDefault(h => h.HardwareType == HardwareType.Memory && !h.Name.Contains("Virtual", StringComparison.OrdinalIgnoreCase))
+                           ?? _computer.Hardware.FirstOrDefault(h => h.HardwareType == HardwareType.Memory);
+
+            if (memHardware != null)
+            {
+                foreach (var sensor in memHardware.Sensors)
                 {
-                    if (sensor.Name.Contains("Used", StringComparison.OrdinalIgnoreCase))
-                        snap.RamUsedGb = val;
-                    else if (sensor.Name.Contains("Available", StringComparison.OrdinalIgnoreCase) || sensor.Name.Contains("Free", StringComparison.OrdinalIgnoreCase))
-                        snap.RamAvailableGb = val;
-                }
-                else if (sensor.SensorType == SensorType.Load)
-                {
-                    if (sensor.Name.Equals("Memory", StringComparison.OrdinalIgnoreCase) || sensor.Name.Contains("Used", StringComparison.OrdinalIgnoreCase))
-                        snap.RamUsagePercent = val;
-                }
+                    if (!sensor.Value.HasValue) continue;
+                    var val = sensor.Value.Value;
 
-                if (snap.RamTotalGb == 0 && snap.RamUsedGb > 0 && snap.RamAvailableGb > 0)
-                    snap.RamTotalGb = snap.RamUsedGb + snap.RamAvailableGb;
+                    if (sensor.SensorType == SensorType.Data)
+                    {
+                        if (sensor.Name.Contains("Used", StringComparison.OrdinalIgnoreCase))
+                            snap.RamUsedGb = val;
+                        else if (sensor.Name.Contains("Available", StringComparison.OrdinalIgnoreCase) || sensor.Name.Contains("Free", StringComparison.OrdinalIgnoreCase))
+                            snap.RamAvailableGb = val;
+                    }
+                    else if (sensor.SensorType == SensorType.Load)
+                    {
+                        if (sensor.Name.Equals("Memory", StringComparison.OrdinalIgnoreCase) || sensor.Name.Contains("Used", StringComparison.OrdinalIgnoreCase))
+                            snap.RamUsagePercent = val;
+                    }
 
-                string memCategory = $"Memory ({Math.Round(snap.RamTotalGb):F0}GB {snap.RamTypeStr})";
-                RecordSensor(memCategory, sensor.Name, val, GetSensorUnit(sensor.SensorType), allSensors);
+                    if (snap.RamTotalGb == 0 && snap.RamUsedGb > 0 && snap.RamAvailableGb > 0)
+                        snap.RamTotalGb = snap.RamUsedGb + snap.RamAvailableGb;
+
+                    string memCategory = $"Memory ({Math.Round(snap.RamTotalGb):F0}GB {snap.RamTypeStr})";
+                    RecordSensor(memCategory, sensor.Name, val, GetSensorUnit(sensor.SensorType), allSensors);
+                }
             }
         }
+        catch { }
 
         // 4. Battery & Power
-        var battery = _computer.Hardware.FirstOrDefault(h => h.HardwareType == HardwareType.Battery);
-        if (battery != null)
+        try
         {
-            snap.HasBattery = true;
-            foreach (var sensor in battery.Sensors)
+            var battery = _computer.Hardware.FirstOrDefault(h => h.HardwareType == HardwareType.Battery);
+            if (battery != null)
             {
-                if (!sensor.Value.HasValue) continue;
-                var val = sensor.Value.Value;
-                RecordSensor("Battery", sensor.Name, val, GetSensorUnit(sensor.SensorType), allSensors);
-
-                if (sensor.SensorType == SensorType.Level && sensor.Name.Contains("Charge", StringComparison.OrdinalIgnoreCase))
-                    snap.BatteryPercent = val;
-                else if (sensor.SensorType == SensorType.Power)
+                snap.HasBattery = true;
+                foreach (var sensor in battery.Sensors)
                 {
-                    if (sensor.Name.Contains("Discharge", StringComparison.OrdinalIgnoreCase))
-                        snap.BatteryDischargeRateWatts = Math.Abs(val);
-                    else if (sensor.Name.Contains("Charge", StringComparison.OrdinalIgnoreCase))
-                        snap.BatteryChargeRateWatts = Math.Abs(val);
+                    if (!sensor.Value.HasValue) continue;
+                    var val = sensor.Value.Value;
+                    RecordSensor("Battery", sensor.Name, val, GetSensorUnit(sensor.SensorType), allSensors);
+
+                    if (sensor.SensorType == SensorType.Level && sensor.Name.Contains("Charge", StringComparison.OrdinalIgnoreCase))
+                        snap.BatteryPercent = val;
+                    else if (sensor.SensorType == SensorType.Power)
+                    {
+                        if (sensor.Name.Contains("Discharge", StringComparison.OrdinalIgnoreCase))
+                            snap.BatteryDischargeRateWatts = Math.Abs(val);
+                        else if (sensor.Name.Contains("Charge", StringComparison.OrdinalIgnoreCase))
+                            snap.BatteryChargeRateWatts = Math.Abs(val);
+                    }
+                    else if (sensor.SensorType == SensorType.TimeSpan && sensor.Name.Contains("Remaining", StringComparison.OrdinalIgnoreCase))
+                        snap.BatteryTimeRemaining = TimeSpan.FromSeconds(val);
                 }
-                else if (sensor.SensorType == SensorType.TimeSpan && sensor.Name.Contains("Remaining", StringComparison.OrdinalIgnoreCase))
-                    snap.BatteryTimeRemaining = TimeSpan.FromSeconds(val);
+            }
+
+            var winBattery = GetWindowsBatteryStatus();
+            if (winBattery.HasBattery)
+            {
+                snap.HasBattery = true;
+                snap.IsAcConnected = winBattery.IsAcConnected;
+                if (snap.BatteryPercent == 0 && winBattery.Percent > 0)
+                    snap.BatteryPercent = winBattery.Percent;
+                if (!snap.BatteryTimeRemaining.HasValue && winBattery.EstimatedTimeRemaining.HasValue)
+                    snap.BatteryTimeRemaining = winBattery.EstimatedTimeRemaining;
+            }
+
+            if (snap.HasBattery)
+            {
+                float rate = snap.IsAcConnected ? snap.BatteryChargeRateWatts : snap.BatteryDischargeRateWatts;
+                _batteryTracker.AddSample(snap.BatteryPercent, snap.IsAcConnected, rate);
+                snap.BatteryCycleCount = _batteryTracker.HardwareCycleCount;
+                snap.BatteryCumulativeChargedWh = _batteryTracker.CumulativeChargedWh;
+            }
+
+            // Total System Power
+            if (snap.HasBattery && !snap.IsAcConnected && snap.BatteryDischargeRateWatts > 0)
+            {
+                snap.TotalSystemPowerWatts = snap.BatteryDischargeRateWatts;
+            }
+            else if (snap.TotalSystemPowerWatts == 0)
+            {
+                float platformOverhead = 28f;
+                snap.TotalSystemPowerWatts = snap.CpuPackagePower + snap.GpuPowerDraw + platformOverhead;
             }
         }
+        catch { }
 
-        var winBattery = GetWindowsBatteryStatus();
-        if (winBattery.HasBattery)
-        {
-            snap.HasBattery = true;
-            snap.IsAcConnected = winBattery.IsAcConnected;
-            if (snap.BatteryPercent == 0 && winBattery.Percent > 0)
-                snap.BatteryPercent = winBattery.Percent;
-            if (!snap.BatteryTimeRemaining.HasValue && winBattery.EstimatedTimeRemaining.HasValue)
-                snap.BatteryTimeRemaining = winBattery.EstimatedTimeRemaining;
-        }
-
-        if (snap.HasBattery)
-        {
-            float rate = snap.IsAcConnected ? snap.BatteryChargeRateWatts : snap.BatteryDischargeRateWatts;
-            _batteryTracker.AddSample(snap.BatteryPercent, snap.IsAcConnected, rate);
-            snap.BatteryCycleCount = _batteryTracker.HardwareCycleCount;
-            snap.BatteryCumulativeChargedWh = _batteryTracker.CumulativeChargedWh;
-        }
-
-        // 5. Total System Power
-        if (snap.HasBattery && !snap.IsAcConnected && snap.BatteryDischargeRateWatts > 0)
-        {
-            snap.TotalSystemPowerWatts = snap.BatteryDischargeRateWatts;
-        }
-        else if (snap.TotalSystemPowerWatts == 0)
-        {
-            float platformOverhead = 28f;
-            snap.TotalSystemPowerWatts = snap.CpuPackagePower + snap.GpuPowerDraw + platformOverhead;
-        }
-
-        // 6. Storage (Physical Sensors & Logical Partition Information)
-        var physicalDisks = _computer.Hardware.Where(h => h.HardwareType == HardwareType.Storage).ToList();
+        // 5. Storage (Physical Sensors & Logical Partition Information)
+        var physicalDisks = new List<IHardware>();
         var physTelemetry = new Dictionary<int, (string Name, float Temp, bool HasSmart, float Health, float Tbw, float ReadMB, float WriteMB)>();
 
-        for (int i = 0; i < physicalDisks.Count; i++)
+        try
         {
-            var st = physicalDisks[i];
-            float pTemp = 0f;
-            float pRead = 0f;
-            float pWrite = 0f;
-            bool hasSmart = false;
-            float pHealth = 100f;
-            float pTbw = 0f;
+            physicalDisks = _computer.Hardware.Where(h => h.HardwareType == HardwareType.Storage).ToList();
 
-            foreach (var s in st.Sensors)
+            for (int i = 0; i < physicalDisks.Count; i++)
             {
-                if (!s.Value.HasValue) continue;
-                var val = s.Value.Value;
-                RecordSensor($"Storage ({st.Name})", s.Name, val, GetSensorUnit(s.SensorType), allSensors);
+                var st = physicalDisks[i];
+                float pTemp = 0f;
+                float pRead = 0f;
+                float pWrite = 0f;
+                bool hasSmart = false;
+                float pHealth = 100f;
+                float pTbw = 0f;
 
-                if (s.SensorType == SensorType.Throughput)
+                foreach (var s in st.Sensors)
                 {
-                    if (s.Name.Contains("Read", StringComparison.OrdinalIgnoreCase))
-                        pRead += (val / (1024f * 1024f));
-                    else if (s.Name.Contains("Write", StringComparison.OrdinalIgnoreCase))
-                        pWrite += (val / (1024f * 1024f));
-                }
-                else if (s.SensorType == SensorType.Temperature && pTemp == 0)
-                {
-                    pTemp = val;
-                }
-                else if (s.SensorType == SensorType.Level)
-                {
-                    if (s.Name.Equals("Life", StringComparison.OrdinalIgnoreCase) ||
-                        s.Name.Contains("Remaining Life", StringComparison.OrdinalIgnoreCase) || 
-                        s.Name.Contains("Wear", StringComparison.OrdinalIgnoreCase) || 
-                        s.Name.Contains("Health", StringComparison.OrdinalIgnoreCase))
+                    if (!s.Value.HasValue) continue;
+                    var val = s.Value.Value;
+                    RecordSensor($"Storage ({st.Name})", s.Name, val, GetSensorUnit(s.SensorType), allSensors);
+
+                    if (s.SensorType == SensorType.Throughput)
                     {
-                        pHealth = val;
-                        hasSmart = true;
+                        if (s.Name.Contains("Read", StringComparison.OrdinalIgnoreCase))
+                            pRead += (val / (1024f * 1024f));
+                        else if (s.Name.Contains("Write", StringComparison.OrdinalIgnoreCase))
+                            pWrite += (val / (1024f * 1024f));
                     }
-                    else if (s.Name.Contains("Percentage Used", StringComparison.OrdinalIgnoreCase) && !hasSmart)
+                    else if (s.SensorType == SensorType.Temperature && pTemp == 0)
                     {
-                        pHealth = Math.Max(0f, 100f - val);
-                        hasSmart = true;
+                        pTemp = val;
+                    }
+                    else if (s.SensorType == SensorType.Level)
+                    {
+                        if (s.Name.Equals("Life", StringComparison.OrdinalIgnoreCase) ||
+                            s.Name.Contains("Remaining Life", StringComparison.OrdinalIgnoreCase) || 
+                            s.Name.Contains("Wear", StringComparison.OrdinalIgnoreCase) || 
+                            s.Name.Contains("Health", StringComparison.OrdinalIgnoreCase))
+                        {
+                            pHealth = val;
+                            hasSmart = true;
+                        }
+                        else if (s.Name.Contains("Percentage Used", StringComparison.OrdinalIgnoreCase) && !hasSmart)
+                        {
+                            pHealth = Math.Max(0f, 100f - val);
+                            hasSmart = true;
+                        }
+                    }
+                    else if (s.SensorType == SensorType.Data)
+                    {
+                        if (s.Name.Equals("Data Written", StringComparison.OrdinalIgnoreCase) ||
+                            s.Name.Contains("Host Writes", StringComparison.OrdinalIgnoreCase) || 
+                            s.Name.Contains("Bytes Written", StringComparison.OrdinalIgnoreCase))
+                        {
+                            pTbw = val > 100f ? val / 1024f : val;
+                        }
                     }
                 }
-                else if (s.SensorType == SensorType.Data)
-                {
-                    if (s.Name.Equals("Data Written", StringComparison.OrdinalIgnoreCase) ||
-                        s.Name.Contains("Host Writes", StringComparison.OrdinalIgnoreCase) || 
-                        s.Name.Contains("Bytes Written", StringComparison.OrdinalIgnoreCase))
-                    {
-                        pTbw = val > 100f ? val / 1024f : val;
-                    }
-                }
+
+                physTelemetry[i] = (st.Name, pTemp, hasSmart, pHealth, pTbw, pRead, pWrite);
             }
 
-            physTelemetry[i] = (st.Name, pTemp, hasSmart, pHealth, pTbw, pRead, pWrite);
+            // Query Windows Disk Performance Counters for real-time accurate throughput
+            var (totalDiskRead, totalDiskWrite) = _diskIoTracker.GetTotalThroughput();
+            snap.TotalDiskReadSpeedMBps = totalDiskRead;
+            snap.TotalDiskWriteSpeedMBps = totalDiskWrite;
+
+            RecordSensor("Storage", "Total Disk Read", totalDiskRead, "MB/s", allSensors);
+            RecordSensor("Storage", "Total Disk Write", totalDiskWrite, "MB/s", allSensors);
         }
-
-        // Query Windows Disk Performance Counters for real-time accurate throughput
-        var (totalDiskRead, totalDiskWrite) = _diskIoTracker.GetTotalThroughput();
-        snap.TotalDiskReadSpeedMBps = totalDiskRead;
-        snap.TotalDiskWriteSpeedMBps = totalDiskWrite;
-
-        RecordSensor("Storage", "Total Disk Read", totalDiskRead, "MB/s", allSensors);
-        RecordSensor("Storage", "Total Disk Write", totalDiskWrite, "MB/s", allSensors);
+        catch { }
 
         // Always Enumerate Logical Partitions (C:\, P:\, etc.)
         try

@@ -103,7 +103,9 @@ public class AppConfig
                 Directory.CreateDirectory(dir);
             }
             var json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(path, json);
+            string tempPath = path + ".tmp";
+            File.WriteAllText(tempPath, json);
+            File.Move(tempPath, path, overwrite: true);
         }
         catch { }
     }

@@ -80,6 +80,8 @@ public class ClockyTestServer : IDisposable
                 string path = parts[1].ToLowerInvariant();
 
                 int contentLength = 0;
+                string? origin = null;
+                string? referer = null;
                 string? header;
                 while (!string.IsNullOrEmpty(header = reader.ReadLine()))
                 {
@@ -87,6 +89,26 @@ public class ClockyTestServer : IDisposable
                     {
                         int.TryParse(header.Substring("Content-Length:".Length).Trim(), out contentLength);
                     }
+                    else if (header.StartsWith("Origin:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        origin = header.Substring("Origin:".Length).Trim();
+                    }
+                    else if (header.StartsWith("Referer:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        referer = header.Substring("Referer:".Length).Trim();
+                    }
+                }
+
+                // Security Check: Block browser-based cross-origin requests
+                if (!string.IsNullOrEmpty(origin) && !origin.StartsWith("http://127.0.0.1", StringComparison.OrdinalIgnoreCase) && !origin.StartsWith("http://localhost", StringComparison.OrdinalIgnoreCase))
+                {
+                    SendHttp(writer, 403, "Forbidden", "text/plain", Encoding.UTF8.GetBytes("Forbidden: Cross-origin browser requests rejected."));
+                    return;
+                }
+                if (!string.IsNullOrEmpty(referer) && !referer.StartsWith("http://127.0.0.1", StringComparison.OrdinalIgnoreCase) && !referer.StartsWith("http://localhost", StringComparison.OrdinalIgnoreCase))
+                {
+                    SendHttp(writer, 403, "Forbidden", "text/plain", Encoding.UTF8.GetBytes("Forbidden: Cross-origin browser requests rejected."));
+                    return;
                 }
 
                 string body = "";
@@ -285,7 +307,6 @@ public class ClockyTestServer : IDisposable
         string header = $"HTTP/1.1 {statusCode} {statusText}\r\n" +
                         $"Content-Type: {contentType}\r\n" +
                         $"Content-Length: {body.Length}\r\n" +
-                        $"Access-Control-Allow-Origin: *\r\n" +
                         $"Connection: close\r\n\r\n";
         byte[] headerBytes = Encoding.UTF8.GetBytes(header);
         writer.Write(headerBytes);

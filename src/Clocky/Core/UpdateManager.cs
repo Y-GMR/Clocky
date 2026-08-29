@@ -14,6 +14,7 @@ public class UpdateManifest
     public string ReleaseDate { get; set; } = "";
     public string Changelog { get; set; } = "";
     public string DownloadUrl { get; set; } = "";
+    public string? Sha256 { get; set; }
     public bool Mandatory { get; set; } = false;
 }
 
@@ -65,7 +66,7 @@ public static class UpdateManager
         }
     }
 
-    public static async Task<string> DownloadUpdateAsync(string downloadUrl, IProgress<int>? progress = null)
+    public static async Task<string> DownloadUpdateAsync(string downloadUrl, string? expectedSha256 = null, IProgress<int>? progress = null)
     {
         string updatesDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Clocky", "Updates");
@@ -82,21 +83,36 @@ public static class UpdateManager
 
         long totalBytes = response.Content.Headers.ContentLength ?? -1L;
         using var stream = await response.Content.ReadAsStreamAsync();
-        using var fileStream = new FileStream(targetFile, FileMode.Create, FileAccess.Write, FileShare.None, 81920, true);
-
-        var buffer = new byte[81920];
-        long totalRead = 0;
-        int bytesRead;
-
-        while ((bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length)) > 0)
+        using (var fileStream = new FileStream(targetFile, FileMode.Create, FileAccess.Write, FileShare.None, 81920, true))
         {
-            await fileStream.WriteAsync(buffer, 0, bytesRead);
-            totalRead += bytesRead;
+            var buffer = new byte[81920];
+            long totalRead = 0;
+            int bytesRead;
 
-            if (totalBytes > 0 && progress != null)
+            while ((bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length)) > 0)
             {
-                int pct = (int)((totalRead * 100) / totalBytes);
-                progress.Report(pct);
+                await fileStream.WriteAsync(buffer, 0, bytesRead);
+                totalRead += bytesRead;
+
+                if (totalBytes > 0 && progress != null)
+                {
+                    int pct = (int)((totalRead * 100) / totalBytes);
+                    progress.Report(pct);
+                }
+            }
+        }
+
+        // Cryptographic Hash Verification: Reject corrupted or tampered binaries
+        if (!string.IsNullOrWhiteSpace(expectedSha256))
+        {
+            using var sha = System.Security.Cryptography.SHA256.Create();
+            using var verifyStream = File.OpenRead(targetFile);
+            byte[] hashBytes = await sha.ComputeHashAsync(verifyStream);
+            string actualHash = Convert.ToHexString(hashBytes).ToLowerInvariant();
+            if (!string.Equals(actualHash, expectedSha256.Trim().ToLowerInvariant(), StringComparison.OrdinalIgnoreCase))
+            {
+                try { File.Delete(targetFile); } catch { }
+                throw new InvalidOperationException($"Update binary verification failed. Expected SHA256: {expectedSha256}, Actual: {actualHash}. Installation rejected.");
             }
         }
 

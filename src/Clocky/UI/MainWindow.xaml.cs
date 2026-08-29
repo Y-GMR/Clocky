@@ -1324,6 +1324,17 @@ public partial class MainWindow : Window
 
         if (TxtSystemModelName != null) TxtSystemModelName.Text = snap.SystemModelName;
 
+        if (NavCpuText != null)
+        {
+            string shortCpu = !string.IsNullOrEmpty(snap.CpuName) ? SystemHardwareHelper.GetShortCpuName(snap.CpuName) : "CPU";
+            NavCpuText.Text = $"CPU ({shortCpu})";
+        }
+        if (NavGpuText != null)
+        {
+            string shortGpu = !string.IsNullOrEmpty(snap.GpuName) ? SystemHardwareHelper.GetShortGpuName(snap.GpuName) : "GPU";
+            NavGpuText.Text = $"GPU ({shortGpu})";
+        }
+
         // 1. Top Responsive 4 Vitals Bar
         if (HdrCpu != null) HdrCpu.Text = $"{snap.CpuTotalUtil:F0}% ({snap.CpuPackageTemp:F0}°C • {snap.CpuPackagePower:F0}W)";
         if (HdrGpu != null) HdrGpu.Text = $"{snap.GpuCoreUtil:F0}% ({snap.GpuCoreTemp:F0}°C • {snap.GpuPowerDraw:F0}W)";
@@ -2757,7 +2768,7 @@ public partial class MainWindow : Window
             if (hasUpdate && manifest != null && !string.IsNullOrEmpty(manifest.DownloadUrl))
             {
                 if (TxtUpdateStatus != null) TxtUpdateStatus.Text = $"Downloading v{manifest.Version} in background...";
-                string targetExe = await UpdateManager.DownloadUpdateAsync(manifest.DownloadUrl);
+                string targetExe = await UpdateManager.DownloadUpdateAsync(manifest.DownloadUrl, manifest.Sha256);
                 _stagedUpdateExePath = targetExe;
 
                 if (BadgeUpdateAvailable != null) BadgeUpdateAvailable.Visibility = Visibility.Visible;
@@ -2792,7 +2803,7 @@ public partial class MainWindow : Window
                 }
 
                 TxtUpdateStatus.Text = $"Downloading v{manifest.Version}...";
-                string targetExe = await UpdateManager.DownloadUpdateAsync(manifest.DownloadUrl);
+                string targetExe = await UpdateManager.DownloadUpdateAsync(manifest.DownloadUrl, manifest.Sha256);
                 _stagedUpdateExePath = targetExe;
 
                 if (BadgeUpdateAvailable != null) BadgeUpdateAvailable.Visibility = Visibility.Visible;

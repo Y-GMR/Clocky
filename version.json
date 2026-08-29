@@ -1,7 +1,8 @@
-{
-  "version": "1.0.6",
-  "releaseDate": "2026-08-29",
-  "changelog": "Added Windows boot auto-start and start-minimized preferences, and optimized update download deduplication.",
-  "downloadUrl": "https://github.com/Y-GMR/Clocky/releases/latest/download/Clocky.exe",
-  "mandatory": false
+﻿{
+    "version":  "1.0.6",
+    "releaseDate":  "2026-08-29",
+    "changelog":  "Added Windows boot auto-start and start-minimized preferences, and optimized update download deduplication.",
+    "downloadUrl":  "https://github.com/Y-GMR/Clocky/releases/latest/download/Clocky.exe",
+    "mandatory":  false,
+    "sha256":  "07d2fd1eed0971b72838ac783acf5f2119242a895e86aca94a39d36453fe8162"
 }

@@ -30,6 +30,14 @@ if ($LASTEXITCODE -eq 0) {
     $hash = (Get-FileHash -Path $exePath -Algorithm SHA256).Hash.ToLower()
     $checksumContent = "$hash  Clocky.exe"
     Set-Content -Path (Join-Path $distDir "SHA256SUMS.txt") -Value $checksumContent -Encoding ASCII
+    
+    $versionJsonPath = Resolve-Path "$PSScriptRoot\..\version.json" -ErrorAction SilentlyContinue
+    if ($versionJsonPath) {
+        $v = Get-Content $versionJsonPath | ConvertFrom-Json
+        $v | Add-Member -MemberType NoteProperty -Name "sha256" -Value $hash -Force
+        $v | ConvertTo-Json -Depth 10 | Set-Content -Path $versionJsonPath -Encoding UTF8
+    }
+
     Write-Host "`n[SUCCESS] Standalone single-file published successfully!" -ForegroundColor Green
     Write-Host "Binary Location: $exePath ($fileSizeMB MB)" -ForegroundColor Green
     Write-Host "SHA256 Checksum: $hash" -ForegroundColor Cyan

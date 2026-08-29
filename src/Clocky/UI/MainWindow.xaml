@@ -585,12 +585,12 @@
 
                                 <!-- TAB 1: CPU TOPOLOGY -->
                                 <RadioButton x:Name="TabCpu" GroupName="NavTabs" Style="{StaticResource CyberdeckTabButton}" Checked="Tab_Checked">
-                                    <TextBlock x:Name="NavCpuText" Text="CPU (i7-13700HX)" FontWeight="Bold" FontSize="12" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="NavCpuText" Text="CPU Topology" FontWeight="Bold" FontSize="12" VerticalAlignment="Center"/>
                                 </RadioButton>
 
                                 <!-- TAB 2: GPU ENGINES -->
                                 <RadioButton x:Name="TabGpu" GroupName="NavTabs" Style="{StaticResource CyberdeckTabButton}" Checked="Tab_Checked">
-                                    <TextBlock x:Name="NavGpuText" Text="GPU (RTX 5050)" FontWeight="Bold" FontSize="12" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="NavGpuText" Text="GPU Engines" FontWeight="Bold" FontSize="12" VerticalAlignment="Center"/>
                                 </RadioButton>
 
                                 <!-- TAB 3: MEMORY & DISKS -->
