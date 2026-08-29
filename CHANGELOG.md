@@ -4,6 +4,20 @@ All notable changes to Clocky are documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## [1.0.7] - 2026-08-29
+
+### Fixed
+- Fixed hardcoded sidebar CPU and GPU navigation button labels with dynamic silicon model detection.
+- Fixed static battery health/capacity placeholder with dynamic ACPI `BatteryFullChargedCapacity` and `BatteryStaticData` calculations.
+
+### Security
+- Added cryptographic SHA256 integrity verification to auto-update binary downloader (`UpdateManager.DownloadUpdateAsync`).
+- Hardened internal debug test server with origin and referer header filtering against cross-origin browser requests.
+
+### Changed
+- Isolated sensor polling loops across CPU, GPU, RAM, storage, battery, and process telemetry with independent exception boundaries to prevent single-subsystem polling freezes.
+- Replaced direct configuration file writes with atomic file swap operations (`File.Move` with temporary files).
+
 ---
 
 ## [1.0.6] - 2026-08-29
