@@ -37,6 +37,15 @@ jobs:
         $v | Add-Member -MemberType NoteProperty -Name "sha256" -Value $hash -Force
         $v | ConvertTo-Json -Depth 10 | Set-Content -Path "version.json" -Encoding UTF8
 
+    - name: Commit and Sync version.json to Master
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add version.json
+        git commit -m "chore(release): sync version.json checksum for release"
+        git push origin HEAD:master
+      continue-on-error: true
+
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v2
       with:
