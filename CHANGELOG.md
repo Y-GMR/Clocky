@@ -7,72 +7,72 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 ## [1.0.8] - 2026-08-29
 
 ### Fixed
-- Resolved auto-update loop by deriving runtime version from executing assembly metadata with 3-component normalization.
-- Clamped initial window dimensions and centering to display work area, preventing viewport clipping on high-DPI scaled screens.
-- Lowered minimum window constraints to 600px height by 960px width.
+- Fixed auto-update download loop by replacing static version references in `UpdateManager` with dynamic assembly metadata extraction and 3-component version normalization.
+- Fixed window overflow and clipped header on high-DPI scaled displays (e.g. 1080p @ 150%, 768p) by dynamically clamping initial dimensions and position to `SystemParameters.WorkArea`.
+- Reduced minimum window constraints to `600px` height and `960px` width for improved compatibility with compact screens.
 
 ---
 
 ## [1.0.7] - 2026-08-29
 
 ### Fixed
-- Replaced static CPU/GPU sidebar placeholders with dynamic model detection.
-- Added ACPI wear calculation (`FullChargedCapacity` / `DesignedCapacity`) and bound live metrics to battery UI.
+- Fixed hardcoded sidebar CPU and GPU navigation button labels with dynamic silicon model detection.
+- Fixed static battery health/capacity placeholder with dynamic ACPI `BatteryFullChargedCapacity` and `BatteryStaticData` calculations.
 
 ### Security
-- Added cryptographic SHA256 integrity verification prior to executing update payloads.
-- Added origin and referer header validation to debug test server.
+- Added cryptographic SHA256 integrity verification to auto-update binary downloader (`UpdateManager.DownloadUpdateAsync`).
+- Hardened internal debug test server with origin and referer header filtering against cross-origin browser requests.
 
 ### Changed
-- Isolated subsystem sensor polling loops to prevent single-sensor failures from freezing UI updates.
-- Converted configuration persistence to atomic file replacement.
+- Isolated sensor polling loops across CPU, GPU, RAM, storage, battery, and process telemetry with independent exception boundaries to prevent single-subsystem polling freezes.
+- Replaced direct configuration file writes with atomic file swap operations (`File.Move` with temporary files).
 
 ---
 
 ## [1.0.6] - 2026-08-29
 
 ### Added
-- Added Windows startup toggle via HKCU Run registry in Preferences.
-- Added start-minimized option and `--minimized` command-line argument.
+- Added `Start Clocky automatically on Windows boot` toggle in Preferences (Tab 7) using unprivileged user run registry.
+- Added `Start minimized to system tray on launch` toggle and `--minimized` launch argument.
 
 ### Changed
-- Added update download deduplication to skip redundant network transfers.
+- Added staged update download deduplication to prevent redundant network downloads if an update is already staged locally.
 
 ---
 
 ## [1.0.5] - 2026-08-29
 
 ### Changed
-- Added WMI fallback queries for battery sensor initialization on supported laptop architectures.
+- Replaced static battery capacity fallback with dynamic WMI `BatteryFullChargedCapacity` queries for universal laptop hardware support.
 
 ---
 
 ## [1.0.4] - 2026-08-29
 
 ### Security
-- Excluded test server sockets from Release builds via `#if DEBUG`.
+- Compiled out internal automation test sockets in Release builds (`#if DEBUG`), ensuring zero listening TCP ports in production distribution.
 
 ---
 
 ## [1.0.3] - 2026-08-29
 
 ### Changed
-- Moved `battery_history.json` to `%LocalAppData%\Clocky\`.
-- Enabled indented JSON formatting for battery history exports.
+- Relocated `battery_history.json` persistence from the executable working directory to `%LocalAppData%\Clocky\`.
+- Enabled indented, human-readable JSON serialization for battery telemetry history.
 
 ---
 
 ## [1.0.2] - 2026-08-29
 
-### Fixed
-- Added configuration sanitizer to migrate legacy update feed URLs automatically.
+### Added
+- Added automatic configuration migration in `AppConfig.Load()` to sanitize and redirect legacy or outdated update feed URLs.
 
 ---
 
 ## [1.0.1] - 2026-08-29
 
 ### Changed
-- Simplified system tray tooltip to `Clocky`.
+- Simplified main application system tray icon tooltip from `Clocky — Hardware Telemetry` to `Clocky` to reduce taskbar tooltip clutter.
 
 ---
 
@@ -81,11 +81,11 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 ### Initial Release
 
 #### Architecture & Subsystems
-- **WPF Rendering Engine**: Direct3D hardware-accelerated composition for rolling 60-sample telemetry oscilloscopes.
-- **Hardware Telemetry Engine**: Ring-0 CPU/GPU temperature, clock, voltage, power, and VRAM polling via LibreHardwareMonitorLib, NVML, and DXGI.
-- **CPU Topology Resolver**: Core segmentation for Intel Hybrid architectures (P-cores / E-cores) and AMD Ryzen topologies.
-- **Process Resource Monitor**: Real-time tracking of top resource consumers across CPU, GPU, memory, and network.
-- **Win32 System Tray Engine**: Custom `ClockyTrayIcon` wrapper using isolated HWNDs to prevent Windows 11 icon grouping collisions.
-- **Update Subsystem**: In-app GitHub release verification and in-place executable replacement.
-- **Diagnostic Handler**: Global exception interceptor and structured crash logging modal.
-- **Distribution Packaging**: Self-contained single-file win-x64 compilation with ReadyToRun optimization.
+- **WPF Rendering Engine**: Implemented Direct3D hardware-accelerated composition for dynamic 60-sample telemetry oscilloscopes with sub-pixel hover throttling.
+- **Hardware Telemetry Engine**: Integrated LibreHardwareMonitorLib, WinRing0, NVML, and DXGI for ring-0 CPU/GPU temperature, clock, voltage, power, and VRAM polling.
+- **CPU Topology Resolver**: Added automated core segmentation for Intel Hybrid architectures (P-cores vs. E-cores) and AMD Ryzen uniform topologies.
+- **Process Resource Monitor**: Added real-time top resource consumer tracking across CPU, GPU, memory, and network subsystems.
+- **Win32 System Tray Engine**: Replaced standard WinForms NotifyIcon with native Win32 `ClockyTrayIcon` wrapper using isolated HWNDs and unique `uID` assignments to prevent Windows 11 icon grouping collisions.
+- **Update Subsystem**: Implemented in-app background GitHub release verification and in-place executable replacement.
+- **Diagnostic Handler**: Integrated global exception interceptor and structured crash logging modal.
+- **Distribution Packaging**: Configured self-contained single-file win-x64 compilation target with compression and ReadyToRun optimization.
