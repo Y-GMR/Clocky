@@ -1,22 +1,18 @@
-<p align="center">
-  <img src="docs/assets/icon.png" alt="Clocky Icon" width="60" height="60" style="vertical-align: middle;" />
+<p>
+  <img src="docs/assets/icon.png" alt="Clocky Icon" width="56" height="56" style="vertical-align: middle;" />
   &nbsp;&nbsp;
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/clocky_title_dark.png">
     <source media="(prefers-color-scheme: light)" srcset="docs/assets/clocky_title_light.png">
-    <img alt="Clocky" src="docs/assets/clocky_title_dark.png" height="46" style="vertical-align: middle;">
+    <img alt="Clocky" src="docs/assets/clocky_title_dark.png" height="42" style="vertical-align: middle;">
   </picture>
 </p>
 
-<p align="center">
-  <strong>Hardware telemetry and observability platform for Windows 10 & 11 (x64), built with .NET 9 and WPF.</strong>
-</p>
+Hardware telemetry and observability platform for Windows 10 and 11 (x64), built with .NET 9 and WPF.
 
-<p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
-  <a href="https://github.com/Y-GMR/Clocky"><img src="https://img.shields.io/badge/Platform-Windows%20x64-0078D6" alt="Platform: Windows x64"></a>
-  <a href="https://dotnet.microsoft.com/"><img src="https://img.shields.io/badge/Framework-.NET%209.0%20WPF-512BD4" alt="Framework: .NET 9.0"></a>
-</p>
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Platform: Windows x64](https://img.shields.io/badge/Platform-Windows%20x64-0078D6)](https://github.com/Y-GMR/Clocky)
+[![Framework: .NET 9.0](https://img.shields.io/badge/Framework-.NET%209.0%20WPF-512BD4)](https://dotnet.microsoft.com/)
 
 ---
 
