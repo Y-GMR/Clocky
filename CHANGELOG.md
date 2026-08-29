@@ -6,6 +6,13 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ---
 
+## [1.0.5] - 2026-08-29
+
+### Changed
+- Replaced static battery capacity fallback with dynamic WMI `BatteryFullChargedCapacity` queries for universal laptop hardware support.
+
+---
+
 ## [1.0.4] - 2026-08-29
 
 ### Security

@@ -1,7 +1,7 @@
 {
-  "version": "1.0.4",
+  "version": "1.0.5",
   "releaseDate": "2026-08-29",
-  "changelog": "Hardened production builds by compiling out local test server sockets and securing release binaries.",
+  "changelog": "Dynamically query hardware battery capacity and ACPI metrics across laptop vendors.",
   "downloadUrl": "https://github.com/Y-GMR/Clocky/releases/latest/download/Clocky.exe",
   "mandatory": false
 }
