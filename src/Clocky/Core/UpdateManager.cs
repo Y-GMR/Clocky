@@ -20,8 +20,41 @@ public class UpdateManifest
 
 public static class UpdateManager
 {
-    public static readonly Version CurrentVersion = new Version(1, 0, 6);
+    public static readonly Version CurrentVersion = GetCurrentAssemblyVersion();
     private static readonly HttpClient _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
+
+    public static Version NormalizeVersion(Version v)
+    {
+        return new Version(Math.Max(0, v.Major), Math.Max(0, v.Minor), Math.Max(0, v.Build));
+    }
+
+    private static Version GetCurrentAssemblyVersion()
+    {
+        try
+        {
+            var asm = typeof(UpdateManager).Assembly;
+            var asmVer = asm.GetName().Version;
+            if (asmVer != null && (asmVer.Major > 0 || asmVer.Minor > 0 || asmVer.Build > 0))
+            {
+                return NormalizeVersion(asmVer);
+            }
+
+            string? procPath = Environment.ProcessPath;
+            if (!string.IsNullOrEmpty(procPath) && File.Exists(procPath))
+            {
+                var info = FileVersionInfo.GetVersionInfo(procPath);
+                if (!string.IsNullOrEmpty(info.ProductVersion))
+                {
+                    string cleanVer = info.ProductVersion.Split('+')[0].Trim();
+                    if (Version.TryParse(cleanVer, out var parsed))
+                        return NormalizeVersion(parsed);
+                }
+            }
+        }
+        catch { }
+
+        return new Version(1, 0, 7);
+    }
 
     public static async Task<(bool HasUpdate, UpdateManifest? Manifest, string? Message)> CheckForUpdatesAsync(string feedUrl)
     {
@@ -44,7 +77,10 @@ public static class UpdateManager
 
             if (Version.TryParse(manifest.Version, out var remoteVer))
             {
-                if (remoteVer > CurrentVersion)
+                var normRemote = NormalizeVersion(remoteVer);
+                var normCurrent = NormalizeVersion(CurrentVersion);
+
+                if (normRemote > normCurrent)
                 {
                     return (true, manifest, $"New version v{manifest.Version} is available!");
                 }

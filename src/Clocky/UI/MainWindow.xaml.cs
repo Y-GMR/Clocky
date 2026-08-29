@@ -161,6 +161,7 @@ public partial class MainWindow : Window
 
         InitializeTheme();
 
+        if (TxtAppVersion != null) TxtAppVersion.Text = $"Clocky v{UpdateManager.CurrentVersion} • PID: ";
         if (TxtPid != null) TxtPid.Text = Process.GetCurrentProcess().Id.ToString();
 
         BuildCpuVisualGrid();

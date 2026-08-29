@@ -1817,7 +1817,7 @@
                 <DockPanel LastChildFill="True">
                     <!-- Left: Telemetry Engine Diagnostics -->
                     <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="Clocky v1.0 • PID: " FontSize="10.5" Foreground="{DynamicResource BrushTextSecondary}"/>
+                        <TextBlock x:Name="TxtAppVersion" Text="Clocky v1.0.7 • PID: " FontSize="10.5" Foreground="{DynamicResource BrushTextSecondary}"/>
                         <TextBlock x:Name="TxtPid" Text="--" FontSize="10.5" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" Margin="0,0,14,0"/>
                         <TextBlock Text="Active Sensors: " FontSize="10.5" Foreground="{DynamicResource BrushTextSecondary}"/>
                         <TextBlock x:Name="TxtSensorsCount" Text="0" FontSize="10.5" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}"/>
