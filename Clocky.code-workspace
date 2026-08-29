@@ -5,6 +5,17 @@
 		}
 	],
 	"settings": {
-		"git.ignoreLimitWarning": true
+		"git.countBadge": "tracked",
+		"git.autorefresh": true,
+		"git.ignoreLimitWarning": true,
+		"files.watcherExclude": {
+			"**/.git/objects/**": true,
+			"**/.git/subtree-cache/**": true,
+			"**/bin/**": true,
+			"**/obj/**": true,
+			"**/dist/**": true,
+			"**/backups/**": true,
+			"**/scratch/**": true
+		}
 	}
 }

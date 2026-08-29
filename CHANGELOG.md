@@ -4,6 +4,16 @@ All notable changes to Clocky are documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## [1.1.2] - 2026-08-30
+
+### Fixed
+- Fixed DataGrid column resizing snapping on All Sensors Matrix and Processes & Apps tables by replacing Star sizing (`Width="*"`) with explicit pixel dimensions in horizontal scroll containers.
+- Resolved column collapse and layout redistribution during 1-second telemetry background data refreshes.
+- Normalized per-process CPU utilization by logical processor count to match Windows Task Manager and Process Lasso total system capacity metrics.
+- Persisted user-resized column widths to `clocky_config.json` so custom widths are restored after restart.
+
+---
+
 ## [1.1.1] - 2026-08-30
 
 ### Fixed

@@ -642,7 +642,7 @@
                           VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling" ScrollViewer.CanContentScroll="True" EnableRowVirtualization="True">
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="Category" Binding="{Binding Category}" SortMemberPath="Category" Width="170" MinWidth="80" MaxWidth="350"/>
-                        <DataGridTextColumn Header="Sensor Name" Binding="{Binding Name}" SortMemberPath="Name" Width="*" MinWidth="120"/>
+                        <DataGridTextColumn Header="Sensor Name" Binding="{Binding Name}" SortMemberPath="Name" Width="320" MinWidth="120"/>
                         <DataGridTextColumn Header="Current" Binding="{Binding FormattedCurrent}" SortMemberPath="Value" Width="110" MinWidth="65" MaxWidth="180">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock">
@@ -1615,7 +1615,7 @@
                                   VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling" ScrollViewer.CanContentScroll="True" EnableRowVirtualization="True">
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="PID" Binding="{Binding FormattedPid}" SortMemberPath="Pid" Width="55" MinWidth="40" MaxWidth="90"/>
-                                <DataGridTextColumn Header="PROCESS NAME" Binding="{Binding DisplayName}" SortMemberPath="Name" Width="*" MinWidth="110"/>
+                                <DataGridTextColumn Header="PROCESS NAME" Binding="{Binding DisplayName}" SortMemberPath="Name" Width="240" MinWidth="110"/>
                                 <DataGridTextColumn Header="CPU" Binding="{Binding FormattedCpu}" SortMemberPath="CpuPercent" Width="55" MinWidth="45" MaxWidth="90"/>
                                 <DataGridTextColumn Header="GPU" Binding="{Binding FormattedGpu}" SortMemberPath="GpuPercent" Width="55" MinWidth="45" MaxWidth="90"/>
                                 <DataGridTextColumn Header="RAM (WS)" Binding="{Binding FormattedWorkingSet}" SortMemberPath="WorkingSetBytes" Width="80" MinWidth="60" MaxWidth="120"/>

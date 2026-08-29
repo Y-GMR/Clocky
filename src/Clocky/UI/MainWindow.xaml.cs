@@ -184,6 +184,7 @@ public partial class MainWindow : Window
             if (ChkAlwaysOnTopOption != null) ChkAlwaysOnTopOption.IsChecked = _config.AlwaysOnTop;
             if (ChkEnableDebugLog != null) ChkEnableDebugLog.IsChecked = _config.EnableDebugLog;
             UpdateTitleBarTheme(_isDarkTheme);
+            RestoreColumnWidths();
             CheckForUpdatesOnStartup();
         };
 
@@ -197,6 +198,7 @@ public partial class MainWindow : Window
 
         Closing += (s, e) =>
         {
+            SaveColumnWidths();
             if (_config != null && _config.CloseToTray)
             {
                 e.Cancel = true;
@@ -3029,5 +3031,62 @@ public partial class MainWindow : Window
                 UpdateManager.ApplyUpdateAndRestart(_stagedUpdateExePath);
             }
         }
+    }
+    // =========================================================================
+    // COLUMN WIDTH PERSISTENCE
+    // =========================================================================
+    public void SaveColumnWidths()
+    {
+        if (_config == null) return;
+        try
+        {
+            if (GridAllSensors != null)
+            {
+                foreach (var col in GridAllSensors.Columns)
+                {
+                    string key = $"sensors.{col.Header}";
+                    if (col.ActualWidth > 0)
+                        _config.ColumnWidths[key] = col.ActualWidth;
+                }
+            }
+            if (GridAllProcesses != null)
+            {
+                foreach (var col in GridAllProcesses.Columns)
+                {
+                    string key = $"processes.{col.Header}";
+                    if (col.ActualWidth > 0)
+                        _config.ColumnWidths[key] = col.ActualWidth;
+                }
+            }
+            _config.Save();
+        }
+        catch { }
+    }
+
+    private void RestoreColumnWidths()
+    {
+        if (_config == null || _config.ColumnWidths.Count == 0) return;
+        try
+        {
+            if (GridAllSensors != null)
+            {
+                foreach (var col in GridAllSensors.Columns)
+                {
+                    string key = $"sensors.{col.Header}";
+                    if (_config.ColumnWidths.TryGetValue(key, out double w) && w >= col.MinWidth)
+                        col.Width = new System.Windows.Controls.DataGridLength(w, System.Windows.Controls.DataGridLengthUnitType.Pixel);
+                }
+            }
+            if (GridAllProcesses != null)
+            {
+                foreach (var col in GridAllProcesses.Columns)
+                {
+                    string key = $"processes.{col.Header}";
+                    if (_config.ColumnWidths.TryGetValue(key, out double w) && w >= col.MinWidth)
+                        col.Width = new System.Windows.Controls.DataGridLength(w, System.Windows.Controls.DataGridLengthUnitType.Pixel);
+                }
+            }
+        }
+        catch { }
     }
 }

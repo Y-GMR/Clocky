@@ -164,8 +164,8 @@ public class ProcessTracker : IDisposable
                                 long deltaCpu = rawCpuTime - prevCpu;
                                 if (deltaCpu > 0)
                                 {
-                                    double cpuPercentTotal = (deltaCpu / (deltaSec * 10000000.0)) * 100.0;
-                                    cpuUsage = (float)Math.Clamp(cpuPercentTotal, 0.0, 100.0 * _logicalCoreCount);
+                                    double cpuPercentTotal = (deltaCpu / (deltaSec * 10000000.0 * _logicalCoreCount)) * 100.0;
+                                    cpuUsage = (float)Math.Clamp(cpuPercentTotal, 0.0, 100.0);
                                 }
                             }
 
@@ -270,7 +270,7 @@ public class ProcessTracker : IDisposable
                         Pid = primary.Pid,
                         Name = primary.Name,
                         InstanceCount = count,
-                        CpuPercent = (float)Math.Clamp(g.Sum(p => (double)p.CpuPercent), 0.0, 100.0 * _logicalCoreCount),
+                        CpuPercent = (float)Math.Clamp(g.Sum(p => (double)p.CpuPercent), 0.0, 100.0),
                         GpuPercent = g.Sum(p => p.GpuPercent),
                         GpuVramMb = g.Sum(p => p.GpuVramMb),
                         PrivateMemoryBytes = g.Sum(p => p.PrivateMemoryBytes),

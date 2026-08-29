@@ -18,6 +18,7 @@ public class AppConfig
     public bool AutoCheckUpdates { get; set; } = true;
     public string UpdateFeedUrl { get; set; } = "https://github.com/Y-GMR/Clocky/releases/latest/download/version.json";
     public List<TraySensorConfig> TraySensors { get; set; } = new();
+    public Dictionary<string, double> ColumnWidths { get; set; } = new();
 
     public static string GetConfigFilePath()
     {

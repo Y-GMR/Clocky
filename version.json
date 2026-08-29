@@ -1,8 +1,8 @@
-{
-  "version": "1.1.1",
-  "releaseDate": "2026-08-30",
-  "changelog": "Atomic staged update downloads, payload size validation, and automatic PowerShell rollback recovery.",
-  "downloadUrl": "https://github.com/Y-GMR/Clocky/releases/latest/download/Clocky.exe",
-  "mandatory": false,
-  "sha256": "c6504867d58fa28742d899e5b3d5f3ca339528a39862487fb42b7541f852f86f"
+﻿{
+    "version":  "1.1.2",
+    "releaseDate":  "2026-08-30",
+    "changelog":  "Fixed DataGrid column resizing snapping on All Sensors Matrix and Processes \u0026 Apps tables by replacing Star sizing with explicit pixel dimensions.",
+    "downloadUrl":  "https://github.com/Y-GMR/Clocky/releases/latest/download/Clocky.exe",
+    "mandatory":  false,
+    "sha256":  "5614f84f33b49cc3ee73d62edc698576ec3628ea9c78613d7e9ee19663566067"
 }

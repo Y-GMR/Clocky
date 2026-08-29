@@ -194,6 +194,7 @@ public partial class App : System.Windows.Application
         {
             try
             {
+                _mainWindow?.SaveColumnWidths();
                 _hardwareEngine?.Stop();
                 _hardwareEngine?.Dispose();
                 _trayManager?.Dispose();
