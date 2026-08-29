@@ -1468,7 +1468,9 @@ public partial class MainWindow : Window
             if (TxtPowerGraphVitals != null) TxtPowerGraphVitals.Text = $"Current: {snap.TotalSystemPowerWatts:F1} W • Peak: {(_powerHistory.Count > 0 ? _powerHistory.Max() : 0):F1} W";
             DrawSparkWaveform(CanvasPowerGraph, _powerHistory, 150f, WaveformStroke, WaveformFill);
 
-            if (TxtCycleStats != null) TxtCycleStats.Text = $"Cycles: {snap.BatteryCycleCount} (ACPI) • Energy Added: {snap.BatteryCumulativeChargedWh:F1} Wh (~{(snap.BatteryCumulativeChargedWh / 60.0f):F1} cycles)";
+            float batCap = _engine?.BatteryTracker?.FullCapacityWh ?? 60.0f;
+            float estCycles = batCap > 0 ? (snap.BatteryCumulativeChargedWh / batCap) : 0f;
+            if (TxtCycleStats != null) TxtCycleStats.Text = $"Cycles: {snap.BatteryCycleCount} (ACPI) • Energy Added: {snap.BatteryCumulativeChargedWh:F1} Wh (~{estCycles:F1} cycles)";
             DrawContinuousBatteryTimeline(CanvasBatteryTimeline, _engine?.BatteryTracker?.History ?? new List<BatteryPoint>(), snap.BatteryPercent);
 
             if (TxtBatteryCharge != null) TxtBatteryCharge.Text = $"Level: {snap.BatteryPercent:F0}% • {(snap.IsAcConnected ? "AC Connected (Charging)" : "On Battery (Discharging)")}";

@@ -69,14 +69,16 @@ public class BatteryTracker
         return targetFile;
     }
 
+    public float FullCapacityWh { get; private set; } = 60.0f;
+
     public BatteryTracker()
     {
         _filePath = GetBatteryHistoryFilePath();
         Load();
-        QueryWmiCycleCount();
+        QueryWmiBatteryStats();
     }
 
-    private void QueryWmiCycleCount()
+    private void QueryWmiBatteryStats()
     {
         try
         {
@@ -94,6 +96,20 @@ public class BatteryTracker
         {
             if (_state.HardwareCycleCount == 0) _state.HardwareCycleCount = 0;
         }
+
+        try
+        {
+            using var capSearcher = new ManagementObjectSearcher(@"root\wmi", "SELECT FullChargedCapacity FROM BatteryFullChargedCapacity");
+            foreach (ManagementObject obj in capSearcher.Get())
+            {
+                if (obj["FullChargedCapacity"] != null && float.TryParse(obj["FullChargedCapacity"].ToString(), out float mwh) && mwh > 1000)
+                {
+                    FullCapacityWh = mwh / 1000.0f;
+                    break;
+                }
+            }
+        }
+        catch { }
     }
 
     public void AddSample(float percent, bool isAc, float rateWatts)
@@ -114,7 +130,7 @@ public class BatteryTracker
             if (isAc && percent > _lastPercent && _lastPercent >= 0)
             {
                 float gainedPercent = percent - _lastPercent;
-                float gainedWh = (gainedPercent / 100f) * 60.0f;
+                float gainedWh = (gainedPercent / 100f) * FullCapacityWh;
                 _state.CumulativeChargedWh += gainedWh;
             }
         }
