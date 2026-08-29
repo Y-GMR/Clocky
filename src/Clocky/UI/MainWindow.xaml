@@ -1342,7 +1342,7 @@
                             <Border Grid.Column="2" Background="{DynamicResource BrushCardSunken}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="6">
                                 <StackPanel>
                                     <TextBlock Text="CAPACITY &amp; HEALTH" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10"/>
-                                    <TextBlock Text="60.0 Wh (100% Health)" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas"/>
+                                    <TextBlock x:Name="TxtBatteryCapacityHealth" Text="-- Wh (--% Health)" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas"/>
                                 </StackPanel>
                             </Border>
                         </Grid>

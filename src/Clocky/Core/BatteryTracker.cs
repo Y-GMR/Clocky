@@ -69,13 +69,29 @@ public class BatteryTracker
         return targetFile;
     }
 
-    public float FullCapacityWh { get; private set; } = 60.0f;
+    public float FullCapacityWh { get; private set; } = 0f;
+    public float DesignedCapacityWh { get; private set; } = 0f;
+    public float HealthPercent
+    {
+        get
+        {
+            if (DesignedCapacityWh > 0 && FullCapacityWh > 0)
+                return Math.Clamp((FullCapacityWh / DesignedCapacityWh) * 100.0f, 0f, 100f);
+            return 100f;
+        }
+    }
 
     public BatteryTracker()
     {
         _filePath = GetBatteryHistoryFilePath();
         Load();
         QueryWmiBatteryStats();
+    }
+
+    public void UpdateCapacities(float fullCapWh, float designCapWh)
+    {
+        if (fullCapWh > 0) FullCapacityWh = fullCapWh;
+        if (designCapWh > 0) DesignedCapacityWh = designCapWh;
     }
 
     private void QueryWmiBatteryStats()
@@ -110,6 +126,47 @@ public class BatteryTracker
             }
         }
         catch { }
+
+        try
+        {
+            using var designSearcher = new ManagementObjectSearcher(@"root\wmi", "SELECT DesignedCapacity FROM BatteryStaticData");
+            foreach (ManagementObject obj in designSearcher.Get())
+            {
+                if (obj["DesignedCapacity"] != null && float.TryParse(obj["DesignedCapacity"].ToString(), out float mwh) && mwh > 1000)
+                {
+                    DesignedCapacityWh = mwh / 1000.0f;
+                    break;
+                }
+            }
+        }
+        catch { }
+
+        // Fallback: If DesignedCapacity is still 0, check Win32_Battery
+        if (DesignedCapacityWh <= 0 || FullCapacityWh <= 0)
+        {
+            try
+            {
+                using var win32Searcher = new ManagementObjectSearcher(@"root\cimv2", "SELECT DesignCapacity, FullChargeCapacity FROM Win32_Battery");
+                foreach (ManagementObject obj in win32Searcher.Get())
+                {
+                    if (FullCapacityWh <= 0 && obj["FullChargeCapacity"] != null && float.TryParse(obj["FullChargeCapacity"].ToString(), out float fc) && fc > 1000)
+                    {
+                        FullCapacityWh = fc / 1000.0f;
+                    }
+                    if (DesignedCapacityWh <= 0 && obj["DesignCapacity"] != null && float.TryParse(obj["DesignCapacity"].ToString(), out float dc) && dc > 1000)
+                    {
+                        DesignedCapacityWh = dc / 1000.0f;
+                    }
+                }
+            }
+            catch { }
+        }
+
+        // Final sanity fallback
+        if (DesignedCapacityWh <= 0 && FullCapacityWh > 0)
+        {
+            DesignedCapacityWh = FullCapacityWh;
+        }
     }
 
     public void AddSample(float percent, bool isAc, float rateWatts)

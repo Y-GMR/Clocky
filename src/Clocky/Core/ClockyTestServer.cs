@@ -228,6 +228,13 @@ public class ClockyTestServer : IDisposable
                     {
                         try
                         {
+                            if (_mainWindow.WindowState == WindowState.Minimized || _mainWindow.Visibility != Visibility.Visible)
+                            {
+                                _mainWindow.Show();
+                                _mainWindow.WindowState = WindowState.Normal;
+                                _mainWindow.Activate();
+                            }
+
                             int width = (int)_mainWindow.ActualWidth;
                             int height = (int)_mainWindow.ActualHeight;
                             if (width <= 0 || height <= 0)

@@ -668,6 +668,13 @@ public class HardwareEngine : IDisposable
                         else if (sensor.Name.Contains("Charge", StringComparison.OrdinalIgnoreCase))
                             snap.BatteryChargeRateWatts = Math.Abs(val);
                     }
+                    else if (sensor.SensorType == SensorType.Energy)
+                    {
+                        if (sensor.Name.Contains("Design", StringComparison.OrdinalIgnoreCase))
+                            _batteryTracker.UpdateCapacities(-1f, val);
+                        else if (sensor.Name.Contains("Full", StringComparison.OrdinalIgnoreCase))
+                            _batteryTracker.UpdateCapacities(val, -1f);
+                    }
                     else if (sensor.SensorType == SensorType.TimeSpan && sensor.Name.Contains("Remaining", StringComparison.OrdinalIgnoreCase))
                         snap.BatteryTimeRemaining = TimeSpan.FromSeconds(val);
                 }
@@ -690,6 +697,9 @@ public class HardwareEngine : IDisposable
                 _batteryTracker.AddSample(snap.BatteryPercent, snap.IsAcConnected, rate);
                 snap.BatteryCycleCount = _batteryTracker.HardwareCycleCount;
                 snap.BatteryCumulativeChargedWh = _batteryTracker.CumulativeChargedWh;
+                snap.BatteryFullCapacityWh = _batteryTracker.FullCapacityWh;
+                snap.BatteryDesignedCapacityWh = _batteryTracker.DesignedCapacityWh;
+                snap.BatteryHealthPercent = _batteryTracker.HealthPercent;
             }
 
             // Total System Power

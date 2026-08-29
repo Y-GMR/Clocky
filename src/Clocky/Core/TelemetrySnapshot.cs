@@ -140,6 +140,9 @@ public class TelemetrySnapshot
     public TimeSpan? BatteryTimeRemaining { get; set; }
     public int BatteryCycleCount { get; set; }
     public float BatteryCumulativeChargedWh { get; set; }
+    public float BatteryFullCapacityWh { get; set; } = 0f;
+    public float BatteryDesignedCapacityWh { get; set; } = 0f;
+    public float BatteryHealthPercent { get; set; } = 100f;
 
     // Storage
     public float TotalDiskReadSpeedMBps { get; set; }

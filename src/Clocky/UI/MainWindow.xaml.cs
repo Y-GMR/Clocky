@@ -1491,6 +1491,20 @@ public partial class MainWindow : Window
                     ? $"Charge Rate: {snap.BatteryChargeRateWatts:F1} W" 
                     : $"Discharge: {snap.BatteryDischargeRateWatts:F1} W";
             }
+            if (TxtBatteryCapacityHealth != null)
+            {
+                if (snap.HasBattery && snap.BatteryFullCapacityWh > 0)
+                {
+                    if (snap.BatteryHealthPercent > 0 && snap.BatteryHealthPercent <= 100)
+                        TxtBatteryCapacityHealth.Text = $"{snap.BatteryFullCapacityWh:F1} Wh ({snap.BatteryHealthPercent:F0}% Health)";
+                    else
+                        TxtBatteryCapacityHealth.Text = $"{snap.BatteryFullCapacityWh:F1} Wh";
+                }
+                else
+                {
+                    TxtBatteryCapacityHealth.Text = "N/A (Desktop / AC Only)";
+                }
+            }
         }
 
         // Tab 6: Internet & Network Interfaces
