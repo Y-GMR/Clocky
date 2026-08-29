@@ -1,10 +1,10 @@
 <p>
-  <img src="docs/assets/icon.png" alt="Clocky Icon" width="56" height="56" style="vertical-align: middle;" />
-  &nbsp;&nbsp;
+  <img src="docs/assets/icon.png" alt="Clocky Icon" height="42" style="vertical-align: middle;" />
+  &nbsp;&nbsp;<strong>|</strong>&nbsp;&nbsp;
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/clocky_title_dark.png">
     <source media="(prefers-color-scheme: light)" srcset="docs/assets/clocky_title_light.png">
-    <img alt="Clocky" src="docs/assets/clocky_title_dark.png" height="42" style="vertical-align: middle;">
+    <img alt="Clocky" src="docs/assets/clocky_title_dark.png" height="38" style="vertical-align: middle;">
   </picture>
 </p>
 
