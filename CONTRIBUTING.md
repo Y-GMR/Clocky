@@ -32,7 +32,7 @@
 
 ## Technical Guidelines
 
-- **Zero-Allocation Hot Paths**: Avoid heap allocations in per-tick sampling loops (`RenderSnapshot`, `UpdateTelemetry`). Use pre-allocated ring buffers and static brushes.
+- **Zero-Allocation Hot Paths**: Avoid heap allocations in per-tick sampling loops (`RenderSnapshot`, `UpdateTelemetry`). Reuse existing visual containers, bounded history buffers, and static brushes.
 - **XAML Styling**: Keep UI definitions declarative in `MainWindow.xaml`. Reference dynamic theme resources (`{DynamicResource Brush...}`) for Dark and Light mode support.
 - **Tray Icon Architecture**: All notification tray icons must be registered via `ClockyTrayIcon` with dedicated HWNDs and unique `uID` offsets to maintain isolation in the Windows 11 taskbar.
 

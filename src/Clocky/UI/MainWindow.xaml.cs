@@ -201,7 +201,6 @@ public partial class MainWindow : Window
             {
                 e.Cancel = true;
                 this.Hide();
-                TrimWorkingSet();
             }
         };
 
@@ -209,7 +208,6 @@ public partial class MainWindow : Window
         {
             if (WindowState == WindowState.Minimized)
             {
-                TrimWorkingSet();
                 if (_config != null && _config.MinimizeToTray)
                 {
                     this.Hide();
@@ -265,9 +263,6 @@ public partial class MainWindow : Window
         catch { }
     }
 
-    [DllImport("psapi.dll")]
-    private static extern int EmptyWorkingSet(IntPtr hwProc);
-
     [DllImport("dwmapi.dll", PreserveSig = true)]
     private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
 
@@ -291,10 +286,9 @@ public partial class MainWindow : Window
                 DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_20H1, ref darkMode, sizeof(int));
             }
 
-            // On Windows 11, set caption color and text color to match the theme background
             if (isDark)
             {
-                // COLORREF format 0x00BBGGRR: DiscordDarkWindow is #1E2124 (R:30, G:33, B:36 -> 0x0024211E)
+                // DiscordDarkWindow is #1E2124 (R:30, G:33, B:36 -> 0x0024211E)
                 int darkCaptionColor = 0x0024211E;
                 DwmSetWindowAttribute(hwnd, DWMWA_CAPTION_COLOR, ref darkCaptionColor, sizeof(int));
                 int lightTextColor = 0x00FFFFFF;
@@ -308,15 +302,6 @@ public partial class MainWindow : Window
                 int darkTextColor = 0x002A170F; // #0F172A
                 DwmSetWindowAttribute(hwnd, DWMWA_TEXT_COLOR, ref darkTextColor, sizeof(int));
             }
-        }
-        catch { }
-    }
-
-    private void TrimWorkingSet()
-    {
-        try
-        {
-            EmptyWorkingSet(Process.GetCurrentProcess().Handle);
         }
         catch { }
     }
@@ -428,6 +413,7 @@ public partial class MainWindow : Window
         PanelTopCpu?.Children.Clear();
         PanelTopGpu?.Children.Clear();
         PanelTopRam?.Children.Clear();
+        PanelTopDisk?.Children.Clear();
         PanelTopNet?.Children.Clear();
         PanelDisksContainer?.Children.Clear();
         PanelNetworkAdapters?.Children.Clear();
@@ -1230,6 +1216,70 @@ public partial class MainWindow : Window
         }
     }
 
+    public object GetTableColumnsInfo(string table)
+    {
+        var grid = table.ToLowerInvariant() switch
+        {
+            "sensors" or "allsensors" or "gridallsensors" => GridAllSensors,
+            "processes" or "procs" or "gridallprocesses" => GridAllProcesses,
+            _ => null
+        };
+
+        if (grid == null) return new { error = $"Table '{table}' not found." };
+
+        var cols = grid.Columns.Select((c, idx) => new
+        {
+            Index = idx,
+            Header = c.Header?.ToString() ?? "",
+            SortMemberPath = c.SortMemberPath ?? "",
+            WidthValue = double.IsInfinity(c.Width.Value) || double.IsNaN(c.Width.Value) ? 0.0 : c.Width.Value,
+            WidthUnitType = c.Width.UnitType.ToString(),
+            ActualWidth = double.IsInfinity(c.ActualWidth) || double.IsNaN(c.ActualWidth) ? 0.0 : c.ActualWidth,
+            MinWidth = double.IsInfinity(c.MinWidth) || double.IsNaN(c.MinWidth) ? 0.0 : c.MinWidth,
+            MaxWidth = double.IsInfinity(c.MaxWidth) || double.IsNaN(c.MaxWidth) ? 10000.0 : c.MaxWidth,
+            DisplayIndex = c.DisplayIndex,
+            CanUserResize = c.CanUserResize
+        }).ToList();
+
+        return new
+        {
+            Table = table,
+            TotalWidth = grid.ActualWidth,
+            Columns = cols
+        };
+    }
+
+    public object SetTableColumnWidth(string table, string columnIdentifier, double newWidth)
+    {
+        var grid = table.ToLowerInvariant() switch
+        {
+            "sensors" or "allsensors" or "gridallsensors" => GridAllSensors,
+            "processes" or "procs" or "gridallprocesses" => GridAllProcesses,
+            _ => null
+        };
+
+        if (grid == null) return new { error = $"Table '{table}' not found." };
+
+        DataGridColumn? targetCol = null;
+        if (int.TryParse(columnIdentifier, out int colIdx) && colIdx >= 0 && colIdx < grid.Columns.Count)
+        {
+            targetCol = grid.Columns[colIdx];
+        }
+        else
+        {
+            targetCol = grid.Columns.FirstOrDefault(c =>
+                c.Header?.ToString()?.Equals(columnIdentifier, StringComparison.OrdinalIgnoreCase) == true ||
+                c.SortMemberPath?.Equals(columnIdentifier, StringComparison.OrdinalIgnoreCase) == true);
+        }
+
+        if (targetCol == null) return new { error = $"Column '{columnIdentifier}' not found in table '{table}'." };
+
+        targetCol.Width = new DataGridLength(newWidth, DataGridLengthUnitType.Pixel);
+        grid.UpdateLayout();
+
+        return GetTableColumnsInfo(table);
+    }
+
     // =========================================================================
     // TAB SELECTION & LIFECYCLE
     // =========================================================================
@@ -1326,7 +1376,7 @@ public partial class MainWindow : Window
         PushHistory(_gpuDecoderHistory, snap.GpuVideoDecoderUtil);
         PushHistory(_gpuEncoderHistory, snap.GpuVideoEncoderUtil);
         PushHistory(_gpuCopyHistory, snap.GpuCopyUtil);
-        PushHistory(_gpuMemCtrlHistory, snap.GpuCoreUtil * 0.5f);
+        PushHistory(_gpuMemCtrlHistory, snap.GpuMemoryControllerUtil);
 
         PushHistory(_ramHistory, snap.RamUsagePercent);
         float totalReadSpeed = snap.TotalDiskReadSpeedMBps > 0 ? snap.TotalDiskReadSpeedMBps : snap.Disks.Sum(d => d.ReadSpeedMBps);
@@ -1362,9 +1412,23 @@ public partial class MainWindow : Window
         }
 
         // 1. Top Responsive 4 Vitals Bar
-        if (HdrCpu != null) HdrCpu.Text = $"{snap.CpuTotalUtil:F0}% ({snap.CpuPackageTemp:F0}°C • {snap.CpuPackagePower:F0}W)";
-        if (HdrGpu != null) HdrGpu.Text = $"{snap.GpuCoreUtil:F0}% ({snap.GpuCoreTemp:F0}°C • {snap.GpuPowerDraw:F0}W)";
-        if (HdrPower != null) HdrPower.Text = $"{snap.TotalSystemPowerWatts:F1} W ({(snap.IsAcConnected ? "AC" : "DC")})";
+        if (HdrCpu != null)
+        {
+            string tempStr = snap.CpuPackageTemp > 0 ? $"{snap.CpuPackageTemp:F0}°C" : "—°C";
+            string powerStr = snap.CpuPackagePower > 0 ? $"{snap.CpuPackagePower:F0}W" : "—W";
+            HdrCpu.Text = $"{snap.CpuTotalUtil:F0}% ({tempStr} • {powerStr})";
+        }
+        if (HdrGpu != null)
+        {
+            string tempStr = snap.GpuCoreTemp > 0 ? $"{snap.GpuCoreTemp:F0}°C" : "—°C";
+            string powerStr = snap.GpuPowerDraw > 0 ? $"{snap.GpuPowerDraw:F0}W" : "—W";
+            HdrGpu.Text = $"{snap.GpuCoreUtil:F0}% ({tempStr} • {powerStr})";
+        }
+        if (HdrPower != null)
+        {
+            string pwrStr = snap.TotalSystemPowerWatts > 0 ? $"{snap.TotalSystemPowerWatts:F1} W" : "— W";
+            HdrPower.Text = $"{pwrStr} ({(snap.IsAcConnected ? "AC" : "DC")})";
+        }
         if (HdrRam != null) HdrRam.Text = $"{snap.RamUsedGb:F1} / {snap.RamTotalGb:F0} GB";
 
         if (TxtSensorsCount != null) TxtSensorsCount.Text = snap.AllSensors.Count.ToString();
@@ -1379,18 +1443,18 @@ public partial class MainWindow : Window
         // Tab 2: CPU Topology & Oscilloscopes
         if (ViewCpu != null && ViewCpu.Visibility == Visibility.Visible)
         {
-            if (CpuPkgTempText != null) CpuPkgTempText.Text = $"{snap.CpuPackageTemp:F1} °C";
-            if (CpuPkgPowerText != null) CpuPkgPowerText.Text = $"{snap.CpuPackagePower:F1} W";
+            if (CpuPkgTempText != null) CpuPkgTempText.Text = snap.CpuPackageTemp > 0 ? $"{snap.CpuPackageTemp:F1} °C" : "— °C";
+            if (CpuPkgPowerText != null) CpuPkgPowerText.Text = snap.CpuPackagePower > 0 ? $"{snap.CpuPackagePower:F1} W" : "— W";
 
             float curAvgClock = snap.CpuCores.Count > 0 ? snap.CpuCores.Average(c => c.Clock) : snap.CpuMaxFrequency;
             if (CpuMaxFreqText != null) CpuMaxFreqText.Text = $"{curAvgClock:F0} / {snap.CpuMaxFrequency:F0} MHz";
             if (CpuTotalLoadText != null) CpuTotalLoadText.Text = $"{snap.CpuTotalUtil:F1} %";
-            if (CpuVidText != null) CpuVidText.Text = $"{snap.CpuVoltage:F3} V";
+            if (CpuVidText != null) CpuVidText.Text = snap.CpuVoltage > 0 ? $"{snap.CpuVoltage:F3} V" : "— V";
 
             if (TxtCpuLoadVital != null) TxtCpuLoadVital.Text = $"{snap.CpuTotalUtil:F1}%";
-            if (TxtCpuTempVital != null) TxtCpuTempVital.Text = $"{snap.CpuPackageTemp:F1}°C";
-            if (TxtCpuPowerVital != null) TxtCpuPowerVital.Text = $"{snap.CpuPackagePower:F1} W";
-            if (TxtCpuFreqVital != null) TxtCpuFreqVital.Text = $"{snap.CpuMaxFrequency:F0} MHz";
+            if (TxtCpuTempVital != null) TxtCpuTempVital.Text = snap.CpuPackageTemp > 0 ? $"{snap.CpuPackageTemp:F1}°C" : "—°C";
+            if (TxtCpuPowerVital != null) TxtCpuPowerVital.Text = snap.CpuPackagePower > 0 ? $"{snap.CpuPackagePower:F1} W" : "— W";
+            if (TxtCpuFreqVital != null) TxtCpuFreqVital.Text = snap.CpuMaxFrequency > 0 ? $"{snap.CpuMaxFrequency:F0} MHz" : "— MHz";
 
             DrawSparkWaveform(CanvasCpuLoad, _cpuLoadHistory, 100f, WaveformStroke, WaveformFill);
             DrawSparkWaveform(CanvasCpuTemp, _cpuTempHistory, 100f, WaveformStroke, WaveformFill);
@@ -1399,8 +1463,7 @@ public partial class MainWindow : Window
 
             for (int i = 0; i < _pCoreCanvases.Count; i++)
             {
-                int physIdx = i / 2;
-                float clk = physIdx < snap.CpuCores.Count && snap.CpuCores[physIdx].Clock > 0 ? snap.CpuCores[physIdx].Clock : snap.CpuMaxFrequency;
+                float clk = i < snap.CpuCores.Count && snap.CpuCores[i].Clock > 0 ? snap.CpuCores[i].Clock : snap.CpuMaxFrequency;
                 _pCoreClockLabels[i].Text = $"{(clk / 1000f):F1} GHz";
 
                 float curLoad = _pCoreHistories[i].Count > 0 ? _pCoreHistories[i].Last() : 0f;
@@ -1412,8 +1475,8 @@ public partial class MainWindow : Window
 
             for (int i = 0; i < _eCoreCanvases.Count; i++)
             {
-                int physIdx = (_pCoreCanvases.Count / 2) + i;
-                float clk = physIdx < snap.CpuCores.Count && snap.CpuCores[physIdx].Clock > 0 ? snap.CpuCores[physIdx].Clock : (snap.CpuMaxFrequency * 0.75f);
+                int eThreadIdx = _pCoreCanvases.Count + i;
+                float clk = eThreadIdx < snap.CpuCores.Count && snap.CpuCores[eThreadIdx].Clock > 0 ? snap.CpuCores[eThreadIdx].Clock : snap.CpuMaxFrequency;
                 _eCoreClockLabels[i].Text = $"{(clk / 1000f):F1} GHz";
 
                 float curLoad = _eCoreHistories[i].Count > 0 ? _eCoreHistories[i].Last() : 0f;
@@ -2473,16 +2536,16 @@ public partial class MainWindow : Window
     {
         if (procs == null) return;
 
-        // 1. Top CPU
+        // 1. Top CPU (Side-by-Side)
         var cpuItems = new List<(int Rank, int Pid, string Name, string MetricStr, float Val, float MaxVal, MediaColor ValueColor)>(3);
         for (int i = 0; i < Math.Min(3, procs.TopCpu.Count); i++)
         {
             var p = procs.TopCpu[i];
             cpuItems.Add((i + 1, p.Pid, p.DisplayName, p.FormattedCpu, p.CpuPercent, 100f, TextPrimaryColor));
         }
-        UpdateTopProcessPanel(PanelTopCpu, cpuItems);
+        UpdateTopProcessPanel(PanelTopCpu, cpuItems, stackedMetric: false);
 
-        // 2. Top GPU
+        // 2. Top GPU (Side-by-Side)
         var gpuItems = new List<(int Rank, int Pid, string Name, string MetricStr, float Val, float MaxVal, MediaColor ValueColor)>(3);
         for (int i = 0; i < Math.Min(3, procs.TopGpu.Count); i++)
         {
@@ -2490,9 +2553,9 @@ public partial class MainWindow : Window
             string valStr = p.GpuPercent > 0.05f ? p.FormattedGpu : (p.GpuVramMb > 0 ? p.FormattedGpuVram : $"{p.CpuPercent:F1}%");
             gpuItems.Add((i + 1, p.Pid, p.DisplayName, valStr, Math.Max(p.GpuPercent, 1f), 100f, TextPrimaryColor));
         }
-        UpdateTopProcessPanel(PanelTopGpu, gpuItems);
+        UpdateTopProcessPanel(PanelTopGpu, gpuItems, stackedMetric: false);
 
-        // 3. Top RAM (Working Set)
+        // 3. Top RAM (Working Set - Side-by-Side)
         var ramItems = new List<(int Rank, int Pid, string Name, string MetricStr, float Val, float MaxVal, MediaColor ValueColor)>(3);
         float maxRam = procs.TopRam.Count > 0 ? Math.Max(1f, procs.TopRam[0].WorkingSetMb) : 100f;
         for (int i = 0; i < Math.Min(3, procs.TopRam.Count); i++)
@@ -2500,50 +2563,48 @@ public partial class MainWindow : Window
             var p = procs.TopRam[i];
             ramItems.Add((i + 1, p.Pid, p.DisplayName, p.FormattedWorkingSet, p.WorkingSetMb, maxRam, TextPrimaryColor));
         }
-        UpdateTopProcessPanel(PanelTopRam, ramItems);
+        UpdateTopProcessPanel(PanelTopRam, ramItems, stackedMetric: false);
 
-        // 4. Top Internet & Network
+        // 4. Top Disk I/O (Stacked Metric Below Name)
+        var diskItems = new List<(int Rank, int Pid, string Name, string MetricStr, float Val, float MaxVal, MediaColor ValueColor)>(3);
+        float maxIo = procs.TopDiskIo.Count > 0 ? Math.Max(1f, procs.TopDiskIo.Max(p => p.DiskReadMBps + p.DiskWriteMBps)) : 10f;
+        for (int i = 0; i < Math.Min(3, procs.TopDiskIo.Count); i++)
+        {
+            var p = procs.TopDiskIo[i];
+            bool hasIo = p.DiskReadMBps > 0.05f || p.DiskWriteMBps > 0.05f;
+            string metricStr = hasIo ? p.FormattedDiskIo : "0.0 MB/s";
+            float ioVal = p.DiskReadMBps + p.DiskWriteMBps;
+            MediaColor col = hasIo ? (p.DiskReadMBps >= p.DiskWriteMBps ? MetricRed : MetricGreen) : TextSecondaryColor;
+            diskItems.Add((i + 1, p.Pid, p.DisplayName, metricStr, ioVal, maxIo, col));
+        }
+        UpdateTopProcessPanel(PanelTopDisk, diskItems, stackedMetric: true);
+
+        // 5. Top Active Network (Stacked Metric Below Name)
         var netItems = new List<(int Rank, int Pid, string Name, string MetricStr, float Val, float MaxVal, MediaColor ValueColor)>(3);
-        int currentPid = Environment.ProcessId;
-        var activeNet = procs.AllProcesses
-            .Where(p => p.Pid != currentPid && !p.Name.Equals("Clocky", StringComparison.OrdinalIgnoreCase) && (p.NetDownSpeedKBps > 0.05f || p.NetUpSpeedKBps > 0.05f))
-            .OrderByDescending(p => p.NetDownSpeedKBps + p.NetUpSpeedKBps)
-            .Take(3)
-            .ToList();
+        float maxNet = procs.TopNet.Count > 0 ? Math.Max(1f, procs.TopNet.Max(p => Math.Max(p.NetDownSpeedKBps + p.NetUpSpeedKBps, (float)Math.Max(p.EstablishedSockets, p.ActiveSockets)))) : 10f;
+        for (int i = 0; i < Math.Min(3, procs.TopNet.Count); i++)
+        {
+            var p = procs.TopNet[i];
+            bool hasNetSpeed = p.NetDownSpeedKBps > 0.05f || p.NetUpSpeedKBps > 0.05f;
+            string metricStr = hasNetSpeed
+                ? $"↓ {NetworkTracker.FormatSpeed(p.NetDownSpeedKBps)} • ↑ {NetworkTracker.FormatSpeed(p.NetUpSpeedKBps)}"
+                : (p.EstablishedSockets > 0 ? $"{p.EstablishedSockets} Conns" : (p.ActiveSockets > 0 ? $"{p.ActiveSockets} Sockets" : "0 B/s"));
 
-        if (activeNet.Count > 0)
-        {
-            float maxSpeed = activeNet.Max(p => Math.Max(p.NetDownSpeedKBps, p.NetUpSpeedKBps));
-            for (int i = 0; i < activeNet.Count; i++)
-            {
-                var p = activeNet[i];
-                bool isDown = p.NetDownSpeedKBps >= p.NetUpSpeedKBps;
-                string metricStr = isDown ? $"↓ {p.FormattedNetDown}" : $"↑ {p.FormattedNetUp}";
-                float speedVal = isDown ? p.NetDownSpeedKBps : p.NetUpSpeedKBps;
-                MediaColor col = isDown ? MetricRed : MetricGreen;
-                netItems.Add((i + 1, p.Pid, p.DisplayName, metricStr, speedVal, maxSpeed, col));
-            }
+            float netVal = hasNetSpeed ? (p.NetDownSpeedKBps + p.NetUpSpeedKBps) : (p.EstablishedSockets > 0 ? p.EstablishedSockets : p.ActiveSockets);
+            MediaColor col = hasNetSpeed ? (p.NetDownSpeedKBps >= p.NetUpSpeedKBps ? MetricGreen : MetricRed) : (p.EstablishedSockets > 0 ? TextPrimaryColor : TextSecondaryColor);
+            netItems.Add((i + 1, p.Pid, p.DisplayName, metricStr, netVal, maxNet, col));
         }
-        else
-        {
-            var idleNet = procs.TopNetDown.Take(3).ToList();
-            for (int i = 0; i < idleNet.Count; i++)
-            {
-                var p = idleNet[i];
-                netItems.Add((i + 1, p.Pid, p.DisplayName, "Idle (0 KB/s)", 0f, 100f, TextSecondaryColor));
-            }
-        }
-        UpdateTopProcessPanel(PanelTopNet, netItems);
+        UpdateTopProcessPanel(PanelTopNet, netItems, stackedMetric: true);
     }
 
-    private void UpdateTopProcessPanel(StackPanel? panel, IReadOnlyList<(int Rank, int Pid, string Name, string MetricStr, float Val, float MaxVal, MediaColor ValueColor)> items)
+    private void UpdateTopProcessPanel(StackPanel? panel, IReadOnlyList<(int Rank, int Pid, string Name, string MetricStr, float Val, float MaxVal, MediaColor ValueColor)> items, bool stackedMetric = false)
     {
         if (panel == null) return;
 
-        // Ensure 3 pre-allocated row containers exist
+        // Ensure 3 pre-allocated row containers exist with matching layout structure
         while (panel.Children.Count < 3)
         {
-            panel.Children.Add(BuildTopProcessRow(panel.Children.Count + 1, 0, "--", "--", 0f, 100f, TextPrimaryColor));
+            panel.Children.Add(BuildTopProcessRow(panel.Children.Count + 1, 0, "--", "--", 0f, 100f, TextPrimaryColor, stackedMetric));
         }
 
         for (int i = 0; i < 3; i++)
@@ -2555,16 +2616,43 @@ public partial class MainWindow : Window
                     var item = items[i];
                     border.Visibility = Visibility.Visible;
 
-                    if (stack.Children.Count > 0 && stack.Children[0] is DockPanel topDock)
+                    if (!stackedMetric)
                     {
-                        if (topDock.Children.Count > 0 && topDock.Children[0] is StackPanel leftStack)
+                        if (stack.Children.Count > 0 && stack.Children[0] is DockPanel topDock)
                         {
-                            if (leftStack.Children.Count > 0 && leftStack.Children[0] is Border rankBadge && rankBadge.Child is TextBlock rankTxt)
+                            var valTxt = topDock.Children.OfType<TextBlock>().FirstOrDefault();
+                            if (valTxt != null)
+                            {
+                                valTxt.Text = item.MetricStr;
+                                if (item.ValueColor == MetricRed)
+                                    valTxt.Foreground = new SolidColorBrush(MetricRed);
+                                else if (item.ValueColor == MetricGreen)
+                                    valTxt.Foreground = new SolidColorBrush(MetricGreen);
+                                else
+                                    valTxt.SetResourceReference(TextBlock.ForegroundProperty, "BrushTextPrimary");
+                            }
+
+                            var leftStack = topDock.Children.OfType<System.Windows.Controls.Panel>().FirstOrDefault(p => !ReferenceEquals(p, topDock));
+                            if (leftStack != null)
+                            {
+                                if (leftStack.Children.Count > 0 && leftStack.Children[0] is Border rankBadge && rankBadge.Child is TextBlock rankTxt)
+                                    rankTxt.Text = $"#{item.Rank}";
+                                if (leftStack.Children.Count > 1 && leftStack.Children[1] is TextBlock nameTxt)
+                                    nameTxt.Text = item.Name;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        if (stack.Children.Count > 0 && stack.Children[0] is DockPanel topDock)
+                        {
+                            if (topDock.Children.Count > 0 && topDock.Children[0] is Border rankBadge && rankBadge.Child is TextBlock rankTxt)
                                 rankTxt.Text = $"#{item.Rank}";
-                            if (leftStack.Children.Count > 1 && leftStack.Children[1] is TextBlock nameTxt)
+                            if (topDock.Children.Count > 1 && topDock.Children[1] is TextBlock nameTxt)
                                 nameTxt.Text = item.Name;
                         }
-                        if (topDock.Children.Count > 1 && topDock.Children[1] is TextBlock valTxt)
+
+                        if (stack.Children.Count > 1 && stack.Children[1] is TextBlock valTxt)
                         {
                             valTxt.Text = item.MetricStr;
                             if (item.ValueColor == MetricRed)
@@ -2576,7 +2664,8 @@ public partial class MainWindow : Window
                         }
                     }
 
-                    if (stack.Children.Count > 1 && stack.Children[1] is WpfProgressBar bar)
+                    var bar = stack.Children.OfType<WpfProgressBar>().FirstOrDefault();
+                    if (bar != null)
                     {
                         bar.Maximum = Math.Max(1f, item.MaxVal);
                         bar.Value = Math.Clamp(item.Val, 0f, bar.Maximum);
@@ -2596,64 +2685,111 @@ public partial class MainWindow : Window
         }
     }
 
-    private FrameworkElement BuildTopProcessRow(int rank, int pid, string name, string metricStr, float val, float maxVal, MediaColor valueColor)
+    private FrameworkElement BuildTopProcessRow(int rank, int pid, string name, string metricStr, float val, float maxVal, MediaColor valueColor, bool stackedMetric = false)
     {
         var border = new Border
         {
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(6),
-            Padding = new Thickness(7, 5, 7, 5),
+            Padding = stackedMetric ? new Thickness(7, 4, 7, 4) : new Thickness(7, 5, 7, 5),
             Margin = new Thickness(0, 0, 0, 4)
         };
         border.SetResourceReference(Border.BackgroundProperty, "BrushCardSunken");
         border.SetResourceReference(Border.BorderBrushProperty, "BrushCardBorder");
 
         var stack = new StackPanel();
-        var topDock = new DockPanel();
 
-        var leftStack = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-        var rankBadge = new Border
+        if (!stackedMetric)
         {
-            CornerRadius = new CornerRadius(3),
-            Padding = new Thickness(4, 1, 4, 1),
-            Margin = new Thickness(0, 0, 5, 0)
-        };
-        rankBadge.SetResourceReference(Border.BackgroundProperty, "BrushAccentCobalt");
-        rankBadge.Child = new TextBlock { Text = $"#{rank}", FontWeight = FontWeights.Bold, FontSize = 8.5, Foreground = MediaBrushes.White };
-        leftStack.Children.Add(rankBadge);
+            var topDock = new DockPanel();
 
-        var nameTxt = new TextBlock
-        {
-            Text = name,
-            FontWeight = FontWeights.Bold,
-            FontSize = 10,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-            MaxWidth = 110
-        };
-        nameTxt.SetResourceReference(TextBlock.ForegroundProperty, "BrushTextPrimary");
-        leftStack.Children.Add(nameTxt);
-        DockPanel.SetDock(leftStack, Dock.Left);
-        topDock.Children.Add(leftStack);
+            var valTxt = new TextBlock
+            {
+                Text = metricStr,
+                FontWeight = FontWeights.Bold,
+                FontSize = 9.5,
+                FontFamily = new MediaFontFamily("Consolas"),
+                HorizontalAlignment = WpfHorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            if (valueColor == MetricRed)
+                valTxt.Foreground = new SolidColorBrush(MetricRed);
+            else if (valueColor == MetricGreen)
+                valTxt.Foreground = new SolidColorBrush(MetricGreen);
+            else
+                valTxt.SetResourceReference(TextBlock.ForegroundProperty, "BrushTextPrimary");
 
-        var valTxt = new TextBlock
-        {
-            Text = metricStr,
-            FontWeight = FontWeights.Bold,
-            FontSize = 10,
-            FontFamily = new MediaFontFamily("Consolas"),
-            HorizontalAlignment = WpfHorizontalAlignment.Right
-        };
-        if (valueColor == MetricRed)
-            valTxt.Foreground = new SolidColorBrush(MetricRed);
-        else if (valueColor == MetricGreen)
-            valTxt.Foreground = new SolidColorBrush(MetricGreen);
+            DockPanel.SetDock(valTxt, Dock.Right);
+            topDock.Children.Add(valTxt);
+
+            var leftStack = new DockPanel { VerticalAlignment = VerticalAlignment.Center, LastChildFill = true };
+            var rankBadge = new Border
+            {
+                CornerRadius = new CornerRadius(3),
+                Padding = new Thickness(4, 1, 4, 1),
+                Margin = new Thickness(0, 0, 5, 0)
+            };
+            rankBadge.SetResourceReference(Border.BackgroundProperty, "BrushAccentCobalt");
+            rankBadge.Child = new TextBlock { Text = $"#{rank}", FontWeight = FontWeights.Bold, FontSize = 8.5, Foreground = MediaBrushes.White };
+            DockPanel.SetDock(rankBadge, Dock.Left);
+            leftStack.Children.Add(rankBadge);
+
+            var nameTxt = new TextBlock
+            {
+                Text = name,
+                FontWeight = FontWeights.Bold,
+                FontSize = 9.5,
+                TextTrimming = TextTrimming.CharacterEllipsis
+            };
+            nameTxt.SetResourceReference(TextBlock.ForegroundProperty, "BrushTextPrimary");
+            leftStack.Children.Add(nameTxt);
+            topDock.Children.Add(leftStack);
+
+            stack.Children.Add(topDock);
+        }
         else
-            valTxt.SetResourceReference(TextBlock.ForegroundProperty, "BrushTextPrimary");
+        {
+            var topDock = new DockPanel { LastChildFill = true };
+            var rankBadge = new Border
+            {
+                CornerRadius = new CornerRadius(3),
+                Padding = new Thickness(4, 1, 4, 1),
+                Margin = new Thickness(0, 0, 5, 0)
+            };
+            rankBadge.SetResourceReference(Border.BackgroundProperty, "BrushAccentCobalt");
+            rankBadge.Child = new TextBlock { Text = $"#{rank}", FontWeight = FontWeights.Bold, FontSize = 8.5, Foreground = MediaBrushes.White };
+            DockPanel.SetDock(rankBadge, Dock.Left);
+            topDock.Children.Add(rankBadge);
 
-        DockPanel.SetDock(valTxt, Dock.Right);
-        topDock.Children.Add(valTxt);
+            var nameTxt = new TextBlock
+            {
+                Text = name,
+                FontWeight = FontWeights.Bold,
+                FontSize = 9.5,
+                TextTrimming = TextTrimming.CharacterEllipsis
+            };
+            nameTxt.SetResourceReference(TextBlock.ForegroundProperty, "BrushTextPrimary");
+            topDock.Children.Add(nameTxt);
+            stack.Children.Add(topDock);
 
-        stack.Children.Add(topDock);
+            var valTxt = new TextBlock
+            {
+                Text = metricStr,
+                FontWeight = FontWeights.Bold,
+                FontSize = 9.0,
+                FontFamily = new MediaFontFamily("Consolas"),
+                HorizontalAlignment = WpfHorizontalAlignment.Right,
+                Margin = new Thickness(0, 2, 0, 1)
+            };
+            if (valueColor == MetricRed)
+                valTxt.Foreground = new SolidColorBrush(MetricRed);
+            else if (valueColor == MetricGreen)
+                valTxt.Foreground = new SolidColorBrush(MetricGreen);
+            else
+                valTxt.SetResourceReference(TextBlock.ForegroundProperty, "BrushTextPrimary");
+
+            stack.Children.Add(valTxt);
+        }
 
         var bar = new WpfProgressBar
         {
@@ -2663,7 +2799,7 @@ public partial class MainWindow : Window
             Value = Math.Clamp(val, 0f, maxVal),
             Background = MediaBrushes.Transparent,
             BorderThickness = new Thickness(0),
-            Margin = new Thickness(0, 3, 0, 0)
+            Margin = new Thickness(0, 2, 0, 0)
         };
         if (valueColor == MetricRed)
             bar.Foreground = new SolidColorBrush(MetricRed);
@@ -2714,6 +2850,12 @@ public partial class MainWindow : Window
                 "FormattedPrivateMemory" => asc ? filtered.OrderBy(p => p.PrivateMemoryBytes) : filtered.OrderByDescending(p => p.PrivateMemoryBytes),
                 "WorkingSetBytes" => asc ? filtered.OrderBy(p => p.WorkingSetBytes) : filtered.OrderByDescending(p => p.WorkingSetBytes),
                 "FormattedWorkingSet" => asc ? filtered.OrderBy(p => p.WorkingSetBytes) : filtered.OrderByDescending(p => p.WorkingSetBytes),
+                "DiskReadMBps" => asc ? filtered.OrderBy(p => p.DiskReadMBps) : filtered.OrderByDescending(p => p.DiskReadMBps),
+                "FormattedDiskRead" => asc ? filtered.OrderBy(p => p.DiskReadMBps) : filtered.OrderByDescending(p => p.DiskReadMBps),
+                "DiskWriteMBps" => asc ? filtered.OrderBy(p => p.DiskWriteMBps) : filtered.OrderByDescending(p => p.DiskWriteMBps),
+                "FormattedDiskWrite" => asc ? filtered.OrderBy(p => p.DiskWriteMBps) : filtered.OrderByDescending(p => p.DiskWriteMBps),
+                "ActiveSockets" => asc ? filtered.OrderBy(p => p.ActiveSockets) : filtered.OrderByDescending(p => p.ActiveSockets),
+                "FormattedSockets" => asc ? filtered.OrderBy(p => p.ActiveSockets) : filtered.OrderByDescending(p => p.ActiveSockets),
                 "NetDownSpeedKBps" => asc ? filtered.OrderBy(p => p.NetDownSpeedKBps) : filtered.OrderByDescending(p => p.NetDownSpeedKBps),
                 "FormattedNetDown" => asc ? filtered.OrderBy(p => p.NetDownSpeedKBps) : filtered.OrderByDescending(p => p.NetDownSpeedKBps),
                 "NetUpSpeedKBps" => asc ? filtered.OrderBy(p => p.NetUpSpeedKBps) : filtered.OrderByDescending(p => p.NetUpSpeedKBps),

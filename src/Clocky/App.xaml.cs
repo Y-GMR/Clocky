@@ -125,24 +125,12 @@ public partial class App : System.Windows.Application
                 _mainWindow.SelectTab(targetTab);
                 LogDebug($"Selected tab {targetTab}.");
             }
-
-            // Flush startup JIT and XAML cold allocations after initial layout
-            Task.Run(async () =>
-            {
-                await Task.Delay(3000);
-                GC.Collect(2, GCCollectionMode.Aggressive, true, true);
-                GC.WaitForPendingFinalizers();
-                EmptyWorkingSet(Process.GetCurrentProcess().Handle);
-            });
         }
         catch (Exception ex)
         {
             LogDebug($"Fatal exception during startup: {ex}", force: true);
         }
     }
-
-    [System.Runtime.InteropServices.DllImport("psapi.dll")]
-    private static extern bool EmptyWorkingSet(IntPtr hProcess);
 
     private void OnTelemetryUpdated(TelemetrySnapshot snap)
     {
@@ -175,7 +163,6 @@ public partial class App : System.Windows.Application
                 if (_mainWindow.IsVisible && _mainWindow.WindowState != WindowState.Minimized)
                 {
                     _mainWindow.Hide();
-                    EmptyWorkingSet(Process.GetCurrentProcess().Handle);
                     LogDebug("MainWindow hidden via Toggle.");
                 }
                 else

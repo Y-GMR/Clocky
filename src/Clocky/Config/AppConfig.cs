@@ -16,7 +16,7 @@ public class AppConfig
     public bool MinimizeToTray { get; set; } = false;
     public bool ShowMainTrayIcon { get; set; } = true;
     public bool AutoCheckUpdates { get; set; } = true;
-    public string UpdateFeedUrl { get; set; } = "https://raw.githubusercontent.com/Y-GMR/Clocky/master/version.json";
+    public string UpdateFeedUrl { get; set; } = "https://github.com/Y-GMR/Clocky/releases/latest/download/version.json";
     public List<TraySensorConfig> TraySensors { get; set; } = new();
 
     public static string GetConfigFilePath()
@@ -52,15 +52,14 @@ public class AppConfig
             StartMinimized = false,
             MinimizeToTrayOnClose = true,
             AutoCheckUpdates = true,
-            UpdateFeedUrl = "https://raw.githubusercontent.com/Y-GMR/Clocky/master/version.json",
+            UpdateFeedUrl = "https://github.com/Y-GMR/Clocky/releases/latest/download/version.json",
             TraySensors = new List<TraySensorConfig>
             {
                 new() { Id = "cpu.temp", Label = "CPU Temp", SensorType = "Temperature", Enabled = true, BackgroundColorHex = "#0284C7", Unit = "°C", Order = 1 },
                 new() { Id = "gpu.temp", Label = "GPU Temp", SensorType = "Temperature", Enabled = true, BackgroundColorHex = "#16A34A", Unit = "°C", Order = 2 },
                 new() { Id = "cpu.power", Label = "CPU Power", SensorType = "Power", Enabled = true, BackgroundColorHex = "#1E40AF", Unit = "W", Order = 3 },
-                new() { Id = "gpu.power", Label = "GPU Power", SensorType = "Power", Enabled = true, BackgroundColorHex = "#14532D", Unit = "W", Order = 4 },
-                new() { Id = "system.power", Label = "Total Power", SensorType = "Power", Enabled = true, BackgroundColorHex = "#0F172A", Unit = "W", Order = 5 },
-                new() { Id = "battery.life", Label = "Battery Life", SensorType = "BatteryTime", Enabled = true, BackgroundColorHex = "#475569", Unit = "h", Order = 6 }
+                new() { Id = "gpu.power", Label = "GPU Power", SensorType = "Power", Enabled = true, BackgroundColorHex = "#15803D", Unit = "W", Order = 4 },
+                new() { Id = "ram.used", Label = "RAM Used", SensorType = "Memory", Enabled = true, BackgroundColorHex = "#7C3AED", Unit = "GB", Order = 5 }
             }
         };
     }
@@ -76,9 +75,12 @@ public class AppConfig
                 var config = JsonSerializer.Deserialize<AppConfig>(json);
                 if (config != null)
                 {
-                    if (string.IsNullOrWhiteSpace(config.UpdateFeedUrl) || config.UpdateFeedUrl.Contains("IwangPetra") || config.UpdateFeedUrl.Contains("/main/"))
+                    if (string.IsNullOrWhiteSpace(config.UpdateFeedUrl) 
+                        || config.UpdateFeedUrl.Contains("IwangPetra") 
+                        || config.UpdateFeedUrl.Contains("/main/")
+                        || config.UpdateFeedUrl.Contains("raw.githubusercontent.com"))
                     {
-                        config.UpdateFeedUrl = "https://raw.githubusercontent.com/Y-GMR/Clocky/master/version.json";
+                        config.UpdateFeedUrl = "https://github.com/Y-GMR/Clocky/releases/latest/download/version.json";
                         config.Save();
                     }
                     return config;

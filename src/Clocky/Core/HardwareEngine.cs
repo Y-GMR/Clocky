@@ -169,8 +169,8 @@ public class HardwareEngine : IDisposable
             IsCpuEnabled = true,
             IsGpuEnabled = true,
             IsMemoryEnabled = true,
-            IsMotherboardEnabled = false,
-            IsControllerEnabled = false,
+            IsMotherboardEnabled = true,
+            IsControllerEnabled = true,
             IsNetworkEnabled = false,
             IsStorageEnabled = true,
             IsBatteryEnabled = false
@@ -284,179 +284,233 @@ public class HardwareEngine : IDisposable
                 var coreTemps = new Dictionary<int, float>();
                 var coreClocks = new Dictionary<int, float>();
 
-            foreach (var sensor in cpu.Sensors)
-            {
-                if (!sensor.Value.HasValue) continue;
-                var val = sensor.Value.Value;
-                RecordSensor(GetCpuCategory(sensor.SensorType), sensor.Name, val, GetSensorUnit(sensor.SensorType), allSensors);
+                int totalThreads = Environment.ProcessorCount;
+                bool isHybridIntel = cpu.Sensors.Any(s => s.Name.StartsWith("P-Core", StringComparison.OrdinalIgnoreCase)) ||
+                                    (snap.CpuName.Contains("Intel", StringComparison.OrdinalIgnoreCase) && 
+                                    (snap.CpuName.Contains("12th", StringComparison.OrdinalIgnoreCase) || 
+                                     snap.CpuName.Contains("13th", StringComparison.OrdinalIgnoreCase) || 
+                                     snap.CpuName.Contains("14th", StringComparison.OrdinalIgnoreCase) || 
+                                     snap.CpuName.Contains("Ultra", StringComparison.OrdinalIgnoreCase)) && totalThreads > 8);
 
-                switch (sensor.SensorType)
+                int pCoreCount = isHybridIntel ? (totalThreads >= 24 ? 8 : (totalThreads >= 16 ? 6 : 4)) : totalThreads;
+                int pThreadThreshold = isHybridIntel ? pCoreCount * 2 : totalThreads;
+                int eCoreCount = isHybridIntel ? totalThreads - pThreadThreshold : 0;
+
+                foreach (var sensor in cpu.Sensors)
                 {
-                    case SensorType.Load:
-                        if (sensor.Name.Contains("Total", StringComparison.OrdinalIgnoreCase))
-                            snap.CpuTotalUtil = val;
-                        else
-                        {
-                            int idx = ParseCoreIndex(sensor.Name);
-                            if (idx >= 0) coreLoads[idx] = val;
-                        }
-                        break;
+                    if (!sensor.Value.HasValue) continue;
+                    var val = sensor.Value.Value;
+                    RecordSensor(GetCpuCategory(sensor.SensorType), sensor.Name, val, GetSensorUnit(sensor.SensorType), allSensors);
 
-                    case SensorType.Temperature:
-                        if (sensor.Name.Contains("Package", StringComparison.OrdinalIgnoreCase) ||
-                            sensor.Name.Contains("Core Max", StringComparison.OrdinalIgnoreCase) ||
-                            sensor.Name.Contains("Tdie", StringComparison.OrdinalIgnoreCase))
-                        {
-                            if (snap.CpuPackageTemp == 0 || sensor.Name.Contains("Package", StringComparison.OrdinalIgnoreCase))
+                    switch (sensor.SensorType)
+                    {
+                        case SensorType.Load:
+                            if (sensor.Name.Contains("Total", StringComparison.OrdinalIgnoreCase))
+                                snap.CpuTotalUtil = val;
+                            else
+                            {
+                                var matchThread = System.Text.RegularExpressions.Regex.Match(sensor.Name, @"CPU Core #(\d+)\s+Thread #(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                                var matchCore = System.Text.RegularExpressions.Regex.Match(sensor.Name, @"CPU Core #(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                                if (matchThread.Success)
+                                {
+                                    int c = int.Parse(matchThread.Groups[1].Value);
+                                    int t = int.Parse(matchThread.Groups[2].Value);
+                                    int thIdx = (c - 1) * 2 + (t - 1);
+                                    if (thIdx >= 0 && thIdx < totalThreads) coreLoads[thIdx] = val;
+                                }
+                                else if (matchCore.Success)
+                                {
+                                    int c = int.Parse(matchCore.Groups[1].Value);
+                                    int thIdx = (isHybridIntel && c > pCoreCount) ? pThreadThreshold + (c - 1 - pCoreCount) : (c - 1);
+                                    if (thIdx >= 0 && thIdx < totalThreads) coreLoads[thIdx] = val;
+                                }
+                            }
+                            break;
+
+                        case SensorType.Temperature:
+                            if (sensor.Name.Equals("CPU Package", StringComparison.OrdinalIgnoreCase) ||
+                                sensor.Name.Equals("Package", StringComparison.OrdinalIgnoreCase))
+                            {
                                 snap.CpuPackageTemp = val;
-                        }
-                        else
-                        {
-                            int idx = ParseCoreIndex(sensor.Name);
-                            if (idx >= 0) coreTemps[idx] = val;
-                        }
-                        break;
-
-                    case SensorType.Power:
-                        if (sensor.Name.Contains("Package", StringComparison.OrdinalIgnoreCase) ||
-                            sensor.Name.Contains("Cores", StringComparison.OrdinalIgnoreCase))
-                        {
-                            if (snap.CpuPackagePower == 0 || sensor.Name.Contains("Package", StringComparison.OrdinalIgnoreCase))
-                                snap.CpuPackagePower = val;
-                        }
-                        else if (sensor.Name.Contains("Platform", StringComparison.OrdinalIgnoreCase) ||
-                                 sensor.Name.Contains("System", StringComparison.OrdinalIgnoreCase))
-                        {
-                            if (val > 0) snap.TotalSystemPowerWatts = val;
-                        }
-                        break;
-
-                    case SensorType.Clock:
-                        if (sensor.Name.Contains("Core", StringComparison.OrdinalIgnoreCase))
-                        {
-                            int idx = ParseCoreIndex(sensor.Name);
-                            if (idx >= 0) coreClocks[idx] = val;
-                            if (val > snap.CpuMaxFrequency) snap.CpuMaxFrequency = val;
-                        }
-                        break;
-
-                    case SensorType.Voltage:
-                        if (val > 0)
-                        {
-                            if (snap.CpuVoltage == 0 || sensor.Name.Contains("VID", StringComparison.OrdinalIgnoreCase) || sensor.Name.Contains("Core", StringComparison.OrdinalIgnoreCase))
-                                snap.CpuVoltage = val;
-                        }
-                        break;
-                }
-            }
-
-            // Ground truth dynamic CPU core clocks matching Windows Task Manager & HWiNFO
-            bool hasDynamicClocks = coreClocks.Count > 0 && coreClocks.Values.Any(c => c > 2500f || c != coreClocks.Values.First());
-            if (!hasDynamicClocks || coreClocks.Count == 0 || snap.CpuMaxFrequency <= 2100f)
-            {
-                var (dynFreq, dynClocks) = SystemHardwareHelper.GetProcessorClocks();
-                if (dynClocks.Count > 0)
-                {
-                    foreach (var kvp in dynClocks)
-                    {
-                        coreClocks[kvp.Key] = kvp.Value;
-                    }
-                    snap.CpuMaxFrequency = Math.Max(dynFreq, dynClocks.Values.Max());
-                }
-            }
-
-            // Real-time Intel RAPL Package Power & Cores Power via Windows Energy Meter / MSR
-            var (raplPkg, raplCores) = SystemHardwareHelper.GetRaplPowerWatts();
-            if (raplPkg > 0)
-            {
-                snap.CpuPackagePower = raplPkg;
-            }
-            else if (snap.CpuPackagePower == 0)
-            {
-                snap.CpuPackagePower = (float)Math.Round(12.0f + (snap.CpuTotalUtil / 100.0f) * 45.0f, 1);
-            }
-
-            // Fallback for CPU Package Temperature if MSR is unavailable
-            if (snap.CpuPackageTemp == 0 && coreTemps.Count > 0)
-                snap.CpuPackageTemp = coreTemps.Values.Max();
-
-            if (snap.CpuPackageTemp == 0)
-            {
-                float fallbackTemp = 0;
-                foreach (var mb in _computer.Hardware.Where(h => h.HardwareType == HardwareType.Motherboard || h.HardwareType == HardwareType.SuperIO))
-                {
-                    foreach (var s in mb.Sensors.Where(s => s.SensorType == SensorType.Temperature && s.Value.HasValue && s.Value.Value > 20))
-                    {
-                        if (s.Name.Contains("CPU", StringComparison.OrdinalIgnoreCase) || s.Name.Contains("Core", StringComparison.OrdinalIgnoreCase))
-                        {
-                            fallbackTemp = s.Value.GetValueOrDefault();
+                            }
+                            else if (sensor.Name.Contains("Core Max", StringComparison.OrdinalIgnoreCase))
+                            {
+                                snap.CpuCoreMaxTemp = val;
+                                if (snap.CpuPackageTemp == 0)
+                                    snap.CpuPackageTemp = val;
+                            }
+                            else if (sensor.Name.Contains("Core Average", StringComparison.OrdinalIgnoreCase) ||
+                                     sensor.Name.Contains("Core Avg", StringComparison.OrdinalIgnoreCase))
+                            {
+                                snap.CpuCoreAvgTemp = val;
+                            }
+                            else if (sensor.Name.Contains("Tdie", StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (snap.CpuPackageTemp == 0)
+                                    snap.CpuPackageTemp = val;
+                            }
+                            else
+                            {
+                                var matchPE = System.Text.RegularExpressions.Regex.Match(sensor.Name, @"(P|E)-Core #(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                                if (matchPE.Success)
+                                {
+                                    bool isP = matchPE.Groups[1].Value.Equals("P", StringComparison.OrdinalIgnoreCase);
+                                    int num = int.Parse(matchPE.Groups[2].Value);
+                                    if (isP && num >= 1 && num <= pCoreCount)
+                                    {
+                                        int t1 = (num - 1) * 2;
+                                        int t2 = t1 + 1;
+                                        if (t1 < totalThreads) coreTemps[t1] = val;
+                                        if (t2 < totalThreads) coreTemps[t2] = val;
+                                    }
+                                    else if (!isP && num >= 1 && num <= eCoreCount)
+                                    {
+                                        int t = pThreadThreshold + (num - 1);
+                                        if (t < totalThreads) coreTemps[t] = val;
+                                    }
+                                }
+                            }
                             break;
-                        }
-                    }
-                    if (fallbackTemp > 0) break;
-                }
 
-                if (fallbackTemp == 0)
-                {
-                    var gpuHw = _computer.Hardware.FirstOrDefault(h => h.HardwareType == HardwareType.GpuNvidia || h.HardwareType == HardwareType.GpuAmd || h.HardwareType == HardwareType.GpuIntel);
-                    float gpuTemp = gpuHw?.Sensors.FirstOrDefault(s => s.SensorType == SensorType.Temperature && s.Value.HasValue)?.Value.GetValueOrDefault() ?? 0;
-                    fallbackTemp = gpuTemp > 25 ? Math.Max(42f, gpuTemp + 2f) : (float)Math.Round(45f + (snap.CpuTotalUtil / 100f) * 25f, 1);
-                }
-                snap.CpuPackageTemp = fallbackTemp;
-            }
-
-            // Motherboard Voltage Fallback if CPU MSR VID is unavailable
-            if (snap.CpuVoltage == 0)
-            {
-                foreach (var mb in _computer.Hardware.Where(h => h.HardwareType == HardwareType.Motherboard || h.HardwareType == HardwareType.SuperIO))
-                {
-                    foreach (var s in mb.Sensors.Where(s => s.SensorType == SensorType.Voltage && s.Value.HasValue && s.Value.Value > 0))
-                    {
-                        if (s.Name.Contains("CPU", StringComparison.OrdinalIgnoreCase) || s.Name.Contains("Vcore", StringComparison.OrdinalIgnoreCase))
-                        {
-                            snap.CpuVoltage = s.Value.GetValueOrDefault();
+                        case SensorType.Power:
+                            if (sensor.Name.Contains("Package", StringComparison.OrdinalIgnoreCase) ||
+                                sensor.Name.Contains("Cores", StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (snap.CpuPackagePower == 0 || sensor.Name.Contains("Package", StringComparison.OrdinalIgnoreCase))
+                                    snap.CpuPackagePower = val;
+                            }
+                            else if (sensor.Name.Contains("Platform", StringComparison.OrdinalIgnoreCase) ||
+                                     sensor.Name.Contains("System", StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (val > 0) snap.TotalSystemPowerWatts = val;
+                            }
                             break;
-                        }
+
+                        case SensorType.Clock:
+                            if (sensor.Name.Contains("Core", StringComparison.OrdinalIgnoreCase))
+                            {
+                                var matchPE = System.Text.RegularExpressions.Regex.Match(sensor.Name, @"(P|E)-Core #(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                                var matchCore = System.Text.RegularExpressions.Regex.Match(sensor.Name, @"CPU Core #(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                                if (matchPE.Success)
+                                {
+                                    bool isP = matchPE.Groups[1].Value.Equals("P", StringComparison.OrdinalIgnoreCase);
+                                    int num = int.Parse(matchPE.Groups[2].Value);
+                                    if (isP && num >= 1 && num <= pCoreCount)
+                                    {
+                                        int t1 = (num - 1) * 2;
+                                        int t2 = t1 + 1;
+                                        if (t1 < totalThreads) coreClocks[t1] = val;
+                                        if (t2 < totalThreads) coreClocks[t2] = val;
+                                    }
+                                    else if (!isP && num >= 1 && num <= eCoreCount)
+                                    {
+                                        int t = pThreadThreshold + (num - 1);
+                                        if (t < totalThreads) coreClocks[t] = val;
+                                    }
+                                }
+                                else if (matchCore.Success)
+                                {
+                                    int c = int.Parse(matchCore.Groups[1].Value);
+                                    int thIdx = (isHybridIntel && c > pCoreCount) ? pThreadThreshold + (c - 1 - pCoreCount) : (c - 1);
+                                    if (thIdx >= 0 && thIdx < totalThreads) coreClocks[thIdx] = val;
+                                }
+                                if (val > snap.CpuMaxFrequency) snap.CpuMaxFrequency = val;
+                            }
+                            break;
+
+                        case SensorType.Voltage:
+                            if (val > 0)
+                            {
+                                if (snap.CpuVoltage == 0 || sensor.Name.Contains("VID", StringComparison.OrdinalIgnoreCase) || sensor.Name.Contains("Core", StringComparison.OrdinalIgnoreCase))
+                                    snap.CpuVoltage = val;
+                            }
+                            break;
                     }
-                    if (snap.CpuVoltage > 0) break;
                 }
 
+                // Ground truth dynamic CPU core clocks matching Windows Task Manager & HWiNFO
+                bool hasDynamicClocks = coreClocks.Count > 0 && coreClocks.Values.Any(c => c > 0f);
+                if (!hasDynamicClocks || coreClocks.Count == 0)
+                {
+                    var (dynFreq, dynClocks) = SystemHardwareHelper.GetProcessorClocks();
+                    if (dynClocks.Count > 0)
+                    {
+                        foreach (var kvp in dynClocks)
+                        {
+                            coreClocks[kvp.Key] = kvp.Value;
+                        }
+                        snap.CpuMaxFrequency = Math.Max(dynFreq, dynClocks.Values.Max());
+                    }
+                }
+
+                // Real-time Intel RAPL Package Power & Cores Power via Windows Energy Meter / MSR
+                var (raplPkg, raplCores) = SystemHardwareHelper.GetRaplPowerWatts();
+                if (raplPkg > 0)
+                {
+                    snap.CpuPackagePower = raplPkg;
+                }
+
+                // Fallback for CPU Package Temperature if MSR is unavailable
+                if (snap.CpuPackageTemp == 0 && coreTemps.Count > 0)
+                    snap.CpuPackageTemp = coreTemps.Values.Max();
+
+                if (snap.CpuPackageTemp == 0)
+                {
+                    float fallbackTemp = 0;
+                    foreach (var mb in _computer.Hardware.Where(h => h.HardwareType == HardwareType.Motherboard || h.HardwareType == HardwareType.SuperIO))
+                    {
+                        foreach (var s in mb.Sensors.Where(s => s.SensorType == SensorType.Temperature && s.Value.HasValue && s.Value.Value > 20))
+                        {
+                            if (s.Name.Contains("CPU", StringComparison.OrdinalIgnoreCase) || s.Name.Contains("Core", StringComparison.OrdinalIgnoreCase))
+                            {
+                                fallbackTemp = s.Value.GetValueOrDefault();
+                                break;
+                            }
+                        }
+                        if (fallbackTemp > 0) break;
+                    }
+
+                    if (fallbackTemp > 0)
+                    {
+                        snap.CpuPackageTemp = fallbackTemp;
+                    }
+                }
+
+                // Motherboard Voltage Fallback if CPU MSR VID is unavailable
                 if (snap.CpuVoltage == 0)
                 {
-                    snap.CpuVoltage = (float)Math.Round(0.85f + (snap.CpuTotalUtil / 100f) * 0.35f, 3);
+                    foreach (var mb in _computer.Hardware.Where(h => h.HardwareType == HardwareType.Motherboard || h.HardwareType == HardwareType.SuperIO))
+                    {
+                        foreach (var s in mb.Sensors.Where(s => s.SensorType == SensorType.Voltage && s.Value.HasValue && s.Value.Value > 0))
+                        {
+                            if (s.Name.Contains("CPU", StringComparison.OrdinalIgnoreCase) || s.Name.Contains("Vcore", StringComparison.OrdinalIgnoreCase))
+                            {
+                                snap.CpuVoltage = s.Value.GetValueOrDefault();
+                                break;
+                            }
+                        }
+                        if (snap.CpuVoltage > 0) break;
+                    }
                 }
-            }
 
-            // Universal Dynamic CPU Core Matrix (Logical Processor Threads)
-            int totalThreads = Environment.ProcessorCount;
-
-            bool isHybridIntel = cpu.Sensors.Any(s => s.Name.StartsWith("P-Core", StringComparison.OrdinalIgnoreCase)) ||
-                                (snap.CpuName.Contains("Intel", StringComparison.OrdinalIgnoreCase) && 
-                                (snap.CpuName.Contains("12th", StringComparison.OrdinalIgnoreCase) || 
-                                 snap.CpuName.Contains("13th", StringComparison.OrdinalIgnoreCase) || 
-                                 snap.CpuName.Contains("14th", StringComparison.OrdinalIgnoreCase) || 
-                                 snap.CpuName.Contains("Ultra", StringComparison.OrdinalIgnoreCase)) && totalThreads > 8);
-
-            int pThreadThreshold = isHybridIntel ? ((totalThreads >= 24) ? 16 : (totalThreads >= 16 ? 12 : 8)) : totalThreads;
-
-            for (int i = 0; i < totalThreads; i++)
-            {
-                string coreType = "Core";
-                if (isHybridIntel)
-                    coreType = (i < pThreadThreshold) ? "P-Core" : "E-Core";
-                else if (snap.CpuName.Contains("Ryzen", StringComparison.OrdinalIgnoreCase) || snap.CpuName.Contains("AMD", StringComparison.OrdinalIgnoreCase))
-                    coreType = "Zen Core";
-
-                snap.CpuCores.Add(new CoreTelemetry
+                for (int i = 0; i < totalThreads; i++)
                 {
-                    Index = i + 1,
-                    CoreType = coreType,
-                    Load = coreLoads.GetValueOrDefault(i, snap.CpuTotalUtil),
-                    Temp = coreTemps.GetValueOrDefault(i, snap.CpuPackageTemp),
-                    Clock = coreClocks.GetValueOrDefault(i, snap.CpuMaxFrequency),
-                    Voltage = snap.CpuVoltage
-                });
-            }
+                    string coreType = "Core";
+                    if (isHybridIntel)
+                        coreType = (i < pThreadThreshold) ? "P-Core" : "E-Core";
+                    else if (snap.CpuName.Contains("Ryzen", StringComparison.OrdinalIgnoreCase) || snap.CpuName.Contains("AMD", StringComparison.OrdinalIgnoreCase))
+                        coreType = "Zen Core";
+
+                    snap.CpuCores.Add(new CoreTelemetry
+                    {
+                        Index = i + 1,
+                        CoreType = coreType,
+                        Load = coreLoads.GetValueOrDefault(i, snap.CpuTotalUtil),
+                        Temp = coreTemps.GetValueOrDefault(i, snap.CpuPackageTemp),
+                        Clock = coreClocks.GetValueOrDefault(i, snap.CpuMaxFrequency),
+                        Voltage = snap.CpuVoltage
+                    });
+                }
 
             // Ensure All Sensors Matrix contains Package Temperature, RAPL Power, Clocks, and VID
             if (!allSensors.Any(s => s.Name.Equals("CPU Package", StringComparison.OrdinalIgnoreCase) && s.Category.Contains("Temperature")))
@@ -709,8 +763,10 @@ public class HardwareEngine : IDisposable
             }
             else if (snap.TotalSystemPowerWatts == 0)
             {
-                float platformOverhead = 28f;
-                snap.TotalSystemPowerWatts = snap.CpuPackagePower + snap.GpuPowerDraw + platformOverhead;
+                if (snap.CpuPackagePower > 0 || snap.GpuPowerDraw > 0)
+                {
+                    snap.TotalSystemPowerWatts = snap.CpuPackagePower + snap.GpuPowerDraw;
+                }
             }
         }
         catch { }
@@ -879,9 +935,13 @@ public class HardwareEngine : IDisposable
         catch { }
 
         // 7. Network & Internet Interfaces
+        float netDownKBps = 0f;
+        float netUpKBps = 0f;
         try
         {
-            var (netInterfaces, netDownKBps, netUpKBps, totalNetRecv, totalNetSent, priName, priIp) = _networkTracker.Poll();
+            var (netInterfaces, downSpeed, upSpeed, totalNetRecv, totalNetSent, priName, priIp) = _networkTracker.Poll();
+            netDownKBps = downSpeed;
+            netUpKBps = upSpeed;
             snap.TotalNetDownloadSpeedKBps = netDownKBps;
             snap.TotalNetUploadSpeedKBps = netUpKBps;
             snap.FormattedTotalNetDown = NetworkTracker.FormatSpeed(netDownKBps);
@@ -911,7 +971,7 @@ public class HardwareEngine : IDisposable
         // 8. Process Telemetry & Top Resource Consumers
         try
         {
-            snap.Processes = _processTracker.Poll();
+            snap.Processes = _processTracker.Poll(netDownKBps, netUpKBps);
         }
         catch { }
 

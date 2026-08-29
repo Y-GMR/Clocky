@@ -5,13 +5,16 @@ namespace Clocky.Core;
 
 public class SensorRecord
 {
+    private readonly Queue<float> _recentSamples = new(64);
+    private double _sumDouble;
+
     public string Category { get; set; } = "";
     public string Group { get; set; } = "";
     public string Name { get; set; } = "";
     public float Value { get; set; }
     public float Min { get; set; }
     public float Max { get; set; }
-    public float Avg => Count > 0 ? Sum / Count : Value;
+    public float Avg { get; private set; }
     public string Unit { get; set; } = "";
 
     public string FormattedCurrent => FormatValue(Value);
@@ -19,16 +22,25 @@ public class SensorRecord
     public string FormattedMax => FormatValue(Max);
     public string FormattedAvg => FormatValue(Avg);
 
-    public float Sum { get; set; }
-    public int Count { get; set; }
+    public float Sum => (float)_sumDouble;
+    public int Count { get; private set; }
 
     public void Update(float val)
     {
         Value = val;
         if (val < Min || Count == 0) Min = val;
         if (val > Max || Count == 0) Max = val;
-        Sum += val;
+        
+        _sumDouble += val;
         Count++;
+
+        _recentSamples.Enqueue(val);
+        while (_recentSamples.Count > 60)
+        {
+            _recentSamples.Dequeue();
+        }
+
+        Avg = _recentSamples.Count > 0 ? (float)_recentSamples.Average() : val;
     }
 
     public void Reset(float val = 0f)
@@ -36,8 +48,11 @@ public class SensorRecord
         Value = val;
         Min = val;
         Max = val;
-        Sum = val;
+        Avg = val;
+        _sumDouble = val;
         Count = 1;
+        _recentSamples.Clear();
+        _recentSamples.Enqueue(val);
     }
 
     private string FormatValue(float v)
@@ -92,6 +107,8 @@ public class TelemetrySnapshot
     public string CpuName { get; set; } = "CPU";
     public float CpuTotalUtil { get; set; }
     public float CpuPackageTemp { get; set; }
+    public float CpuCoreMaxTemp { get; set; }
+    public float CpuCoreAvgTemp { get; set; }
     public float CpuPackagePower { get; set; }
     public float CpuMaxFrequency { get; set; }
     public float CpuVoltage { get; set; }
@@ -193,11 +210,26 @@ public class ProcessItem
     public float WorkingSetMb => WorkingSetBytes / (1024f * 1024f);
     public string FormattedWorkingSet => WorkingSetMb >= 1024f ? $"{(WorkingSetMb / 1024f):F1} GB" : $"{WorkingSetMb:F0} MB";
 
+    public float DiskReadMBps { get; set; }
+    public string FormattedDiskRead => DiskReadMBps >= 1000f ? $"{(DiskReadMBps / 1024f):F1} GB/s" : (DiskReadMBps >= 0.05f ? $"{DiskReadMBps:F1} MB/s" : "0.0 MB/s");
+
+    public float DiskWriteMBps { get; set; }
+    public string FormattedDiskWrite => DiskWriteMBps >= 1000f ? $"{(DiskWriteMBps / 1024f):F1} GB/s" : (DiskWriteMBps >= 0.05f ? $"{DiskWriteMBps:F1} MB/s" : "0.0 MB/s");
+
+    public string FormattedDiskIo => (DiskReadMBps > 0.05f || DiskWriteMBps > 0.05f) ? $"R: {DiskReadMBps:F1} • W: {DiskWriteMBps:F1} MB/s" : "0.0 MB/s";
+
+    public int EstablishedSockets { get; set; }
+    public int ActiveSockets { get; set; }
+    public string FormattedSockets => ActiveSockets > 0 ? (EstablishedSockets > 0 ? $"{EstablishedSockets} Conns" : $"{ActiveSockets} Sockets") : "0";
+    public string FormattedActiveNet => EstablishedSockets > 0 ? $"{EstablishedSockets} Conns" : (ActiveSockets > 0 ? $"{ActiveSockets} Sockets" : "Idle");
+
     public float NetDownSpeedKBps { get; set; }
     public string FormattedNetDown => NetworkTracker.FormatSpeed(NetDownSpeedKBps);
 
     public float NetUpSpeedKBps { get; set; }
     public string FormattedNetUp => NetworkTracker.FormatSpeed(NetUpSpeedKBps);
+
+    public string FormattedNetThroughput => (NetDownSpeedKBps > 0.05f || NetUpSpeedKBps > 0.05f) ? $"↓ {NetworkTracker.FormatSpeed(NetDownSpeedKBps)} • ↑ {NetworkTracker.FormatSpeed(NetUpSpeedKBps)}" : (EstablishedSockets > 0 ? $"{EstablishedSockets} Conns" : (ActiveSockets > 0 ? $"{ActiveSockets} Sockets" : "0 B/s"));
 
     public int ThreadCount { get; set; }
     public string Status { get; set; } = "Running";
@@ -208,6 +240,8 @@ public class ProcessTelemetrySnapshot
     public List<ProcessItem> TopCpu { get; set; } = new();
     public List<ProcessItem> TopGpu { get; set; } = new();
     public List<ProcessItem> TopRam { get; set; } = new();
+    public List<ProcessItem> TopDiskIo { get; set; } = new();
+    public List<ProcessItem> TopNet { get; set; } = new();
     public List<ProcessItem> TopNetDown { get; set; } = new();
     public List<ProcessItem> TopNetUp { get; set; } = new();
     public List<ProcessItem> AllProcesses { get; set; } = new();

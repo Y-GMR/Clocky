@@ -281,7 +281,11 @@ public static class SystemHardwareHelper
             catch { }
         }
 
-        if (baseMhz <= 0) baseMhz = 2100f; // Sane baseline
+        if (baseMhz <= 0)
+        {
+            // Base frequency cannot be discovered via performance counter, registry, or NtPowerInformation
+            return (0f, new Dictionary<int, float>());
+        }
 
         float totalPerf = 100f;
         if (_totalPerfCounter != null)
@@ -380,5 +384,56 @@ public static class SystemHardwareHelper
         }
 
         return (pkgW, coresW);
+    }
+
+    private static System.Diagnostics.PerformanceCounter? _thermalZoneCounter;
+    private static bool _tzInitAttempted = false;
+
+    public static float GetAcpiThermalZoneTemperature()
+    {
+        if (!_tzInitAttempted)
+        {
+            _tzInitAttempted = true;
+            try
+            {
+                var cat = new System.Diagnostics.PerformanceCounterCategory("Thermal Zone Information");
+                var insts = cat.GetInstanceNames();
+                if (insts.Length > 0)
+                {
+                    try
+                    {
+                        _thermalZoneCounter = new System.Diagnostics.PerformanceCounter("Thermal Zone Information", "High Precision Temperature", insts[0], true);
+                        _thermalZoneCounter.NextValue();
+                    }
+                    catch
+                    {
+                        _thermalZoneCounter = new System.Diagnostics.PerformanceCounter("Thermal Zone Information", "Temperature", insts[0], true);
+                        _thermalZoneCounter.NextValue();
+                    }
+                }
+            }
+            catch { }
+        }
+
+        if (_thermalZoneCounter != null)
+        {
+            try
+            {
+                float val = _thermalZoneCounter.NextValue();
+                if (val > 2000f) // High precision temperature in tenths of Kelvin (deci-Kelvin)
+                {
+                    float celsius = (val / 10.0f) - 273.15f;
+                    if (celsius > 0f && celsius < 125f) return (float)Math.Round(celsius, 1);
+                }
+                else if (val > 200f) // Standard temperature in Kelvin
+                {
+                    float celsius = val - 273.15f;
+                    if (celsius > 0f && celsius < 125f) return (float)Math.Round(celsius, 1);
+                }
+            }
+            catch { }
+        }
+
+        return 0f;
     }
 }

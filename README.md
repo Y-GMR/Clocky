@@ -19,8 +19,8 @@ Clocky ingests ring-0 kernel telemetry, DirectX performance counters, ETW networ
 ### Core Subsystems
 - **CPU Topology Engine**: Detects Intel Hybrid architectures (separating Performance Cores and Efficiency Cores) and AMD Ryzen uniform CCX/CCD topologies. Tracks per-core clocks, VID, and load.
 - **Hardware Telemetry Pipeline**: Queries CPU/GPU sensors via LibreHardwareMonitorLib (`WinRing0`), NVML, and DXGI at configurable polling intervals (default 1000ms).
-- **Process Resource Attribution**: Tracks instantaneous top resource consumers across CPU, GPU (3D and VRAM engines), system memory, and network throughput.
-- **Real-Time Oscilloscopes**: Pre-allocated fixed-capacity ring buffers rendering rolling 60-sample waveforms with cached max-bound calculations and sub-pixel hover interpolation.
+- **Process Resource Attribution**: Tracks instantaneous top resource consumers across CPU, GPU (3D and VRAM engines), system memory, disk I/O, and real-time network throughput.
+- **Real-Time Oscilloscopes**: Fixed-capacity 60-sample rolling waveform buffers with cached max-bound calculations and sub-pixel hover interpolation.
 - **Win32 Notification Tray Engine**: Custom `ClockyTrayIcon` implementation wrapping `Shell_NotifyIcon` with independent HWNDs and unique `uID` assignments, preventing Windows 11 taskbar icon grouping collisions.
 - **Diagnostics & Error Interception**: Global exception interceptor with structured crash logging and diagnostic report modals.
 
@@ -70,24 +70,27 @@ The compiled output is placed at `dist/Clocky.exe`.
 
 ## 5. Configuration File Format
 
-Configuration is stored at `%APPDATA%\Clocky\config.json`.
+Configuration is stored at `%LocalAppData%\Clocky\clocky_config.json` (or `clocky_config.json` next to the binary in portable mode).
 
 ```json
 {
   "PollingIntervalMs": 1000,
+  "ThemePreference": "System",
+  "StartWithWindows": false,
+  "StartMinimized": false,
   "AlwaysOnTop": true,
-  "CloseToTray": true,
-  "MinimizeToTray": false,
-  "IsDarkTheme": true,
-  "AutoCheckUpdates": true,
   "EnableDebugLog": false,
+  "MinimizeToTrayOnClose": true,
+  "AutoCheckUpdates": true,
+  "UpdateFeedUrl": "https://github.com/Y-GMR/Clocky/releases/latest/download/version.json",
   "TraySensors": [
     {
       "Id": "cpu.temp",
-      "Label": "CPU Package Temp (°C)",
+      "Label": "CPU Temp",
+      "SensorType": "Temperature",
       "Enabled": true,
       "Order": 1,
-      "BackgroundColorHex": "",
+      "BackgroundColorHex": "#0284C7",
       "TextColorHex": ""
     }
   ]

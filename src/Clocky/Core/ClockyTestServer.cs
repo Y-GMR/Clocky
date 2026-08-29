@@ -21,6 +21,11 @@ public class ClockyTestServer : IDisposable
     private readonly AppConfig _config;
     private bool _running;
     private const int Port = 19842;
+    private static readonly JsonSerializerOptions JsonOpts = new()
+    {
+        WriteIndented = true,
+        NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowNamedFloatingPointLiterals
+    };
 
     public ClockyTestServer(MainWindow mainWindow, AppConfig config)
     {
@@ -77,7 +82,30 @@ public class ClockyTestServer : IDisposable
                 if (parts.Length < 2) return;
 
                 string method = parts[0].ToUpperInvariant();
-                string path = parts[1].ToLowerInvariant();
+                string rawUrl = parts[1];
+                string path = rawUrl;
+                string query = "";
+                int qIdx = rawUrl.IndexOf('?');
+                if (qIdx >= 0)
+                {
+                    path = rawUrl.Substring(0, qIdx).ToLowerInvariant();
+                    query = rawUrl.Substring(qIdx + 1);
+                }
+                else
+                {
+                    path = rawUrl.ToLowerInvariant();
+                }
+
+                var queryDict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                if (!string.IsNullOrEmpty(query))
+                {
+                    foreach (var pair in query.Split('&', StringSplitOptions.RemoveEmptyEntries))
+                    {
+                        var kv = pair.Split('=', 2);
+                        if (kv.Length == 2) queryDict[Uri.UnescapeDataString(kv[0])] = Uri.UnescapeDataString(kv[1]);
+                        else if (kv.Length == 1) queryDict[Uri.UnescapeDataString(kv[0])] = "";
+                    }
+                }
 
                 int contentLength = 0;
                 string? origin = null;
@@ -136,7 +164,7 @@ public class ClockyTestServer : IDisposable
                             PowerText = _mainWindow.HdrPowerText,
                             RamText = _mainWindow.HdrRamText
                         };
-                        json = JsonSerializer.Serialize(status, new JsonSerializerOptions { WriteIndented = true });
+                        json = JsonSerializer.Serialize(status, JsonOpts);
                     });
 
                     byte[] bodyBytes = Encoding.UTF8.GetBytes(json);
@@ -148,7 +176,7 @@ public class ClockyTestServer : IDisposable
                     _mainWindow.Dispatcher.Invoke(() =>
                     {
                         var snap = _mainWindow.LatestSnapshot;
-                        json = JsonSerializer.Serialize(snap, new JsonSerializerOptions { WriteIndented = true });
+                        json = JsonSerializer.Serialize(snap, JsonOpts);
                     });
 
                     byte[] bodyBytes = Encoding.UTF8.GetBytes(json);
@@ -164,6 +192,51 @@ public class ClockyTestServer : IDisposable
                     byte[] bodyBytes = Encoding.UTF8.GetBytes("{\"status\":\"ok\"}");
                     SendHttp(writer, 200, "OK", "application/json", bodyBytes);
                 }
+                else if (path.StartsWith("/api/table/columns") && method == "GET")
+                {
+                    string table = queryDict.GetValueOrDefault("table", "processes");
+                    if (path.EndsWith("/sensors")) table = "sensors";
+                    else if (path.EndsWith("/processes")) table = "processes";
+
+                    string json = "";
+                    _mainWindow.Dispatcher.Invoke(() =>
+                    {
+                        var info = _mainWindow.GetTableColumnsInfo(table);
+                        json = JsonSerializer.Serialize(info, JsonOpts);
+                    });
+
+                    byte[] bodyBytes = Encoding.UTF8.GetBytes(json);
+                    SendHttp(writer, 200, "OK", "application/json", bodyBytes);
+                }
+                else if (path.StartsWith("/api/table/resize") && (method == "POST" || method == "GET"))
+                {
+                    string table = queryDict.GetValueOrDefault("table", "processes");
+                    string col = queryDict.GetValueOrDefault("column", "1");
+                    double width = 150.0;
+                    if (queryDict.TryGetValue("width", out string? wStr)) double.TryParse(wStr, out width);
+
+                    if (!string.IsNullOrEmpty(body) && method == "POST")
+                    {
+                        try
+                        {
+                            using var doc = JsonDocument.Parse(body);
+                            if (doc.RootElement.TryGetProperty("table", out var tProp)) table = tProp.GetString() ?? table;
+                            if (doc.RootElement.TryGetProperty("column", out var cProp)) col = cProp.GetString() ?? col;
+                            if (doc.RootElement.TryGetProperty("width", out var wProp)) width = wProp.GetDouble();
+                        }
+                        catch { }
+                    }
+
+                    string json = "";
+                    _mainWindow.Dispatcher.Invoke(() =>
+                    {
+                        var res = _mainWindow.SetTableColumnWidth(table, col, width);
+                        json = JsonSerializer.Serialize(res, JsonOpts);
+                    });
+
+                    byte[] bodyBytes = Encoding.UTF8.GetBytes(json);
+                    SendHttp(writer, 200, "OK", "application/json", bodyBytes);
+                }
                 else if (path.StartsWith("/api/element") && method == "GET")
                 {
                     string elName = path.Substring("/api/element".Length).TrimStart('/');
@@ -173,8 +246,16 @@ public class ClockyTestServer : IDisposable
                     _mainWindow.Dispatcher.Invoke(() =>
                     {
                         var r = _mainWindow.GetElementScreenRect(elName);
-                        var obj = new { Name = elName, X = r.X, Y = r.Y, Width = r.Width, Height = r.Height, IsEmpty = r.IsEmpty };
-                        json = JsonSerializer.Serialize(obj);
+                        var obj = new
+                        {
+                            Name = elName,
+                            X = r.IsEmpty || double.IsInfinity(r.X) || double.IsNaN(r.X) ? 0.0 : r.X,
+                            Y = r.IsEmpty || double.IsInfinity(r.Y) || double.IsNaN(r.Y) ? 0.0 : r.Y,
+                            Width = r.IsEmpty || double.IsInfinity(r.Width) || double.IsNaN(r.Width) ? 0.0 : r.Width,
+                            Height = r.IsEmpty || double.IsInfinity(r.Height) || double.IsNaN(r.Height) ? 0.0 : r.Height,
+                            IsEmpty = r.IsEmpty
+                        };
+                        json = JsonSerializer.Serialize(obj, JsonOpts);
                     });
 
                     byte[] bodyBytes = Encoding.UTF8.GetBytes(json);
@@ -194,6 +275,16 @@ public class ClockyTestServer : IDisposable
 
                     byte[] bodyBytes = Encoding.UTF8.GetBytes("{\"status\":\"ok\"}");
                     SendHttp(writer, 200, "OK", "application/json", bodyBytes);
+                }
+                else if (path == "/api/exit" && method == "POST")
+                {
+                    byte[] bodyBytes = Encoding.UTF8.GetBytes("{\"status\":\"exiting\"}");
+                    SendHttp(writer, 200, "OK", "application/json", bodyBytes);
+                    Task.Run(async () =>
+                    {
+                        await Task.Delay(200);
+                        Environment.Exit(0);
+                    });
                 }
                 else if (path == "/api/test_crash" && method == "POST")
                 {

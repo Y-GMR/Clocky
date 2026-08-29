@@ -42,9 +42,9 @@ Telemetry sampling executes on a dedicated background thread pool worker to isol
 
 ---
 
-## 3. Telemetry Storage & Zero-Allocation Ring Buffers
+## 3. Telemetry Storage & Bounded History Buffers
 
-To prevent garbage collection latency, temporal history series use pre-allocated, fixed-capacity list buffers (60 samples):
+To maintain low GC latency, temporal history series use bounded, fixed-capacity list buffers (60 samples):
 
 ```csharp
 private static void PushHistory(List<float> history, float value)
@@ -89,8 +89,8 @@ Clocky implements a native Win32 `ClockyTrayIcon` wrapper:
 
 ## 6. Process & Bandwidth Attribution Engine
 
-- **ProcessTracker**: Samples top CPU, GPU, and RAM consuming processes using `GetProcessTimes` and Windows performance queries.
-- **NetworkTracker**: Aggregates TCP/UDP endpoint throughput to identify process-level bandwidth utilization.
+- **ProcessTracker**: Samples top CPU, GPU (3D and dedicated VRAM engines), and RAM consumers, while tracking Disk I/O bytes.
+- **Kernel ETW Network Accounting**: Hooks `Microsoft-Windows-TCPIP` ETW kernel trace events in real time to capture exact per-PID download and upload speeds.
 
 ---
 

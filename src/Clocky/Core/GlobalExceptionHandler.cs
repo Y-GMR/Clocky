@@ -121,7 +121,6 @@ public static class GlobalExceptionHandler
         sb.AppendLine($"- **OS:** {RuntimeInformation.OSDescription} ({RuntimeInformation.OSArchitecture})");
         sb.AppendLine($"- **.NET Runtime:** {RuntimeInformation.FrameworkDescription}");
         sb.AppendLine($"- **Processor Count:** {Environment.ProcessorCount} Threads");
-        sb.AppendLine($"- **Machine Name:** {Environment.MachineName}");
         sb.AppendLine();
         sb.AppendLine("## Exception Details");
         sb.AppendLine($"- **Type:** `{ex.GetType().FullName}`");

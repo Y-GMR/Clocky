@@ -4,6 +4,25 @@ All notable changes to Clocky are documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## [1.1.0] - 2026-08-30
+
+### Added
+- Real-time Kernel ETW network packet accounting via `Microsoft.Diagnostics.Tracing.TraceEvent` for precise per-process download and upload telemetry.
+- 5th top-leaderboard card in Processes & Apps view displaying top network I/O processes with independent upload/download speeds.
+- Test server API endpoints (`/api/table/columns`, `/api/table/resize`, `/api/exit`) for programmatic DataGrid inspection and column resizing.
+
+### Changed
+- Stacked metric and progress bar layout for Disk I/O and Net I/O leaderboard cards for improved legibility.
+- Enabled `ScrollViewer.HorizontalScrollBarVisibility="Auto"` across DataGrid tables to prevent viewport clipping and column snapping during width adjustments.
+- Unified search filter styling across All Sensors Matrix (`TxtSensorFilter`) and Processes & Apps (`TxtProcessFilter`) with uniform rounded containers.
+
+### Fixed
+- Fixed DataGrid header gripper hit-testing by adjusting Z-index and margins to prevent column resize gestures from inadvertently triggering column sorting.
+- Aligned DataGrid property configurations on `GridAllSensors` (`IsReadOnly`, `CanUserAddRows`, `CanUserDeleteRows`, `HeadersVisibility`, `RowHeight`, `SelectionUnit`).
+- Fixed JSON serialization of special floating-point numbers (`Infinity`, `NaN`) and `Rect.Empty` in internal test server responses.
+
+---
+
 ## [1.0.8] - 2026-08-29
 
 ### Fixed

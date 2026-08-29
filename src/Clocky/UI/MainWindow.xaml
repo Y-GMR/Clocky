@@ -362,7 +362,7 @@
         </Style>
 
         <Style x:Key="ColumnHeaderGripperStyle" TargetType="{x:Type Thumb}">
-            <Setter Property="Width" Value="8"/>
+            <Setter Property="Width" Value="10"/>
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Cursor" Value="SizeWE"/>
             <Setter Property="Template">
@@ -401,8 +401,8 @@
                                     <ContentPresenter VerticalAlignment="Center" HorizontalAlignment="Left"/>
                                 </DockPanel>
                             </Border>
-                            <Thumb x:Name="PART_LeftHeaderGripper" HorizontalAlignment="Left" Style="{StaticResource ColumnHeaderGripperStyle}"/>
-                            <Thumb x:Name="PART_RightHeaderGripper" HorizontalAlignment="Right" Style="{StaticResource ColumnHeaderGripperStyle}"/>
+                            <Thumb x:Name="PART_LeftHeaderGripper" HorizontalAlignment="Left" Margin="-5,0,0,0" Style="{StaticResource ColumnHeaderGripperStyle}" Panel.ZIndex="100"/>
+                            <Thumb x:Name="PART_RightHeaderGripper" HorizontalAlignment="Right" Margin="0,0,-5,0" Style="{StaticResource ColumnHeaderGripperStyle}" Panel.ZIndex="100"/>
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="SortDirection" Value="Ascending">
@@ -633,12 +633,12 @@
 
                 <DockPanel Grid.Row="0" Margin="0,0,0,6">
                     <Button x:Name="BtnResetSort" DockPanel.Dock="Right" Content="Reset Sort" Style="{StaticResource TechButton}" Margin="6,0,0,0" Padding="10,4" Click="BtnResetSort_Click"/>
-                    <TextBox x:Name="TxtSensorFilter" HorizontalAlignment="Right" Width="260" Background="{DynamicResource BrushCardSunken}" Foreground="{DynamicResource BrushTextPrimary}" 
-                             BorderBrush="{DynamicResource BrushCardBorder}" Padding="6,4" TextChanged="TxtSensorFilter_TextChanged" Text="Filter sensors (e.g. CPU, Power, GPU)..." 
-                             GotFocus="TxtSensorFilter_GotFocus" LostFocus="TxtSensorFilter_LostFocus"/>
+                    <Border HorizontalAlignment="Right" Background="{DynamicResource BrushCardSunken}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" CornerRadius="6" Padding="8,3" Width="260">
+                        <TextBox x:Name="TxtSensorFilter" Text="Filter sensors (e.g. CPU, Power, GPU)..." TextChanged="TxtSensorFilter_TextChanged" GotFocus="TxtSensorFilter_GotFocus" LostFocus="TxtSensorFilter_LostFocus" Background="Transparent" BorderThickness="0" Foreground="{DynamicResource BrushTextPrimary}" FontSize="11" VerticalAlignment="Center"/>
+                    </Border>
                 </DockPanel>
 
-                <DataGrid x:Name="GridAllSensors" Grid.Row="1" AutoGenerateColumns="False" CanUserSortColumns="True" CanUserResizeColumns="True" CanUserReorderColumns="True" Sorting="GridAllSensors_Sorting" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                <DataGrid x:Name="GridAllSensors" Grid.Row="1" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" IsReadOnly="True" CanUserSortColumns="True" CanUserResizeColumns="True" CanUserReorderColumns="True" HeadersVisibility="Column" GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="{DynamicResource BrushGridLine}" Background="Transparent" BorderThickness="0" Sorting="GridAllSensors_Sorting" RowHeight="24" SelectionUnit="FullRow" ScrollViewer.HorizontalScrollBarVisibility="Auto"
                           VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling" ScrollViewer.CanContentScroll="True" EnableRowVirtualization="True">
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="Category" Binding="{Binding Category}" SortMemberPath="Category" Width="170" MinWidth="80" MaxWidth="350"/>
@@ -1499,26 +1499,28 @@
                     <RowDefinition Height="*"/>    <!-- Full Interactive Process Matrix -->
                 </Grid.RowDefinitions>
 
-                <!-- 1. TOP 4 LEADERBOARD CARDS (TOP 3 PER RESOURCE) -->
+                <!-- 1. TOP 5 LEADERBOARD CARDS (TOP 3 PER RESOURCE) -->
                 <Grid Grid.Row="0" Margin="0,0,0,10">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="8"/>
+                        <ColumnDefinition Width="6"/>
                         <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="8"/>
+                        <ColumnDefinition Width="6"/>
                         <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="8"/>
+                        <ColumnDefinition Width="6"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="6"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
 
                     <!-- CARD 1: TOP 3 CPU CONSUMERS -->
-                    <Border Grid.Column="0" Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" CornerRadius="10" Padding="10,8" Effect="{DynamicResource SkeuoCardShadow}">
+                    <Border Grid.Column="0" Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" CornerRadius="10" Padding="8,8" Effect="{DynamicResource SkeuoCardShadow}">
                         <StackPanel>
                             <DockPanel Margin="0,0,0,6">
-                                <Border Background="{DynamicResource BrushCardSunken}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" CornerRadius="4" Padding="5,1" Margin="0,0,6,0">
+                                <Border Background="{DynamicResource BrushCardSunken}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" CornerRadius="4" Padding="4,1" Margin="0,0,5,0">
                                     <TextBlock Text="CPU" FontWeight="Bold" FontSize="9" Foreground="{DynamicResource BrushAccentCobalt}"/>
                                 </Border>
-                                <TextBlock Text="TOP 3 CPU LOAD" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" FontSize="10.5" VerticalAlignment="Center"/>
+                                <TextBlock Text="TOP 3 CPU LOAD" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" FontSize="10" VerticalAlignment="Center"/>
                             </DockPanel>
                             <StackPanel x:Name="PanelTopCpu">
                                 <!-- Populated dynamically -->
@@ -1527,13 +1529,13 @@
                     </Border>
 
                     <!-- CARD 2: TOP 3 GPU CONSUMERS -->
-                    <Border Grid.Column="2" Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" CornerRadius="10" Padding="10,8" Effect="{DynamicResource SkeuoCardShadow}">
+                    <Border Grid.Column="2" Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" CornerRadius="10" Padding="8,8" Effect="{DynamicResource SkeuoCardShadow}">
                         <StackPanel>
                             <DockPanel Margin="0,0,0,6">
-                                <Border Background="{DynamicResource BrushCardSunken}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" CornerRadius="4" Padding="5,1" Margin="0,0,6,0">
+                                <Border Background="{DynamicResource BrushCardSunken}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" CornerRadius="4" Padding="4,1" Margin="0,0,5,0">
                                     <TextBlock Text="GPU" FontWeight="Bold" FontSize="9" Foreground="{DynamicResource BrushAccentCobalt}"/>
                                 </Border>
-                                <TextBlock Text="TOP 3 GPU LOAD" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" FontSize="10.5" VerticalAlignment="Center"/>
+                                <TextBlock Text="TOP 3 GPU LOAD" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" FontSize="10" VerticalAlignment="Center"/>
                             </DockPanel>
                             <StackPanel x:Name="PanelTopGpu">
                                 <!-- Populated dynamically -->
@@ -1542,13 +1544,13 @@
                     </Border>
 
                     <!-- CARD 3: TOP 3 RAM (WORKING SET) CONSUMERS -->
-                    <Border Grid.Column="4" Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" CornerRadius="10" Padding="10,8" Effect="{DynamicResource SkeuoCardShadow}">
+                    <Border Grid.Column="4" Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" CornerRadius="10" Padding="8,8" Effect="{DynamicResource SkeuoCardShadow}">
                         <StackPanel>
                             <DockPanel Margin="0,0,0,6">
-                                <Border Background="{DynamicResource BrushCardSunken}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" CornerRadius="4" Padding="5,1" Margin="0,0,6,0">
+                                <Border Background="{DynamicResource BrushCardSunken}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" CornerRadius="4" Padding="4,1" Margin="0,0,5,0">
                                     <TextBlock Text="RAM" FontWeight="Bold" FontSize="9" Foreground="{DynamicResource BrushAccentCobalt}"/>
                                 </Border>
-                                <TextBlock Text="TOP 3 RAM (WORKING SET)" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" FontSize="10.5" VerticalAlignment="Center"/>
+                                <TextBlock Text="TOP 3 RAM (WS)" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" FontSize="10" VerticalAlignment="Center"/>
                             </DockPanel>
                             <StackPanel x:Name="PanelTopRam">
                                 <!-- Populated dynamically -->
@@ -1556,14 +1558,29 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- CARD 4: TOP 3 INTERNET & NETWORK CONSUMERS -->
-                    <Border Grid.Column="6" Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" CornerRadius="10" Padding="10,8" Effect="{DynamicResource SkeuoCardShadow}">
+                    <!-- CARD 4: TOP 3 DISK I/O CONSUMERS -->
+                    <Border Grid.Column="6" Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" CornerRadius="10" Padding="8,8" Effect="{DynamicResource SkeuoCardShadow}">
                         <StackPanel>
                             <DockPanel Margin="0,0,0,6">
-                                <Border Background="{DynamicResource BrushCardSunken}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" CornerRadius="4" Padding="5,1" Margin="0,0,6,0">
+                                <Border Background="{DynamicResource BrushCardSunken}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" CornerRadius="4" Padding="4,1" Margin="0,0,5,0">
+                                    <TextBlock Text="DISK" FontWeight="Bold" FontSize="9" Foreground="{DynamicResource BrushAccentCobalt}"/>
+                                </Border>
+                                <TextBlock Text="TOP 3 DISK I/O" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" FontSize="10" VerticalAlignment="Center"/>
+                            </DockPanel>
+                            <StackPanel x:Name="PanelTopDisk">
+                                <!-- Populated dynamically -->
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- CARD 5: TOP 3 ACTIVE NETWORK CONSUMERS -->
+                    <Border Grid.Column="8" Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" CornerRadius="10" Padding="8,8" Effect="{DynamicResource SkeuoCardShadow}">
+                        <StackPanel>
+                            <DockPanel Margin="0,0,0,6">
+                                <Border Background="{DynamicResource BrushCardSunken}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" CornerRadius="4" Padding="4,1" Margin="0,0,5,0">
                                     <TextBlock Text="NET" FontWeight="Bold" FontSize="9" Foreground="{DynamicResource BrushAccentCobalt}"/>
                                 </Border>
-                                <TextBlock Text="BANDWIDTH LEADERS" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" FontSize="10.5" VerticalAlignment="Center"/>
+                                <TextBlock Text="TOP 3 NET I/O" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" FontSize="10" VerticalAlignment="Center"/>
                             </DockPanel>
                             <StackPanel x:Name="PanelTopNet">
                                 <!-- Populated dynamically -->
@@ -1594,19 +1611,20 @@
                         </DockPanel>
 
                         <!-- Live DataGrid -->
-                        <DataGrid Grid.Row="1" x:Name="GridAllProcesses" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" IsReadOnly="True" CanUserResizeColumns="True" CanUserReorderColumns="True" HeadersVisibility="Column" GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="{DynamicResource BrushGridLine}" Background="Transparent" BorderThickness="0" Sorting="GridAllProcesses_Sorting" RowHeight="24" SelectionUnit="FullRow" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                        <DataGrid Grid.Row="1" x:Name="GridAllProcesses" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" IsReadOnly="True" CanUserResizeColumns="True" CanUserReorderColumns="True" HeadersVisibility="Column" GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="{DynamicResource BrushGridLine}" Background="Transparent" BorderThickness="0" Sorting="GridAllProcesses_Sorting" RowHeight="24" SelectionUnit="FullRow" ScrollViewer.HorizontalScrollBarVisibility="Auto"
                                   VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling" ScrollViewer.CanContentScroll="True" EnableRowVirtualization="True">
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="PID" Binding="{Binding FormattedPid}" SortMemberPath="Pid" Width="80" MinWidth="45" MaxWidth="120"/>
-                                <DataGridTextColumn Header="PROCESS NAME" Binding="{Binding DisplayName}" SortMemberPath="Name" Width="*" MinWidth="120"/>
-                                <DataGridTextColumn Header="CPU %" Binding="{Binding FormattedCpu}" Width="75" MinWidth="55" MaxWidth="120"/>
-                                <DataGridTextColumn Header="GPU %" Binding="{Binding FormattedGpu}" Width="75" MinWidth="55" MaxWidth="120"/>
-                                <DataGridTextColumn Header="WORKING SET" Binding="{Binding FormattedWorkingSet}" Width="105" MinWidth="75" MaxWidth="160"/>
-                                <DataGridTextColumn Header="PRIVATE RAM" Binding="{Binding FormattedPrivateMemory}" Width="105" MinWidth="75" MaxWidth="160"/>
-                                <DataGridTextColumn Header="NET DOWN" Binding="{Binding FormattedNetDown}" Width="100" MinWidth="75" MaxWidth="160"/>
-                                <DataGridTextColumn Header="NET UP" Binding="{Binding FormattedNetUp}" Width="95" MinWidth="70" MaxWidth="160"/>
-                                <DataGridTextColumn Header="THREADS" Binding="{Binding ThreadCount}" Width="70" MinWidth="50" MaxWidth="100"/>
-                                <DataGridTextColumn Header="STATUS" Binding="{Binding Status}" Width="80" MinWidth="60" MaxWidth="120"/>
+                                <DataGridTextColumn Header="PID" Binding="{Binding FormattedPid}" SortMemberPath="Pid" Width="55" MinWidth="40" MaxWidth="90"/>
+                                <DataGridTextColumn Header="PROCESS NAME" Binding="{Binding DisplayName}" SortMemberPath="Name" Width="*" MinWidth="110"/>
+                                <DataGridTextColumn Header="CPU" Binding="{Binding FormattedCpu}" SortMemberPath="CpuPercent" Width="55" MinWidth="45" MaxWidth="90"/>
+                                <DataGridTextColumn Header="GPU" Binding="{Binding FormattedGpu}" SortMemberPath="GpuPercent" Width="55" MinWidth="45" MaxWidth="90"/>
+                                <DataGridTextColumn Header="RAM (WS)" Binding="{Binding FormattedWorkingSet}" SortMemberPath="WorkingSetBytes" Width="80" MinWidth="60" MaxWidth="120"/>
+                                <DataGridTextColumn Header="RAM (PRIV)" Binding="{Binding FormattedPrivateMemory}" SortMemberPath="PrivateMemoryBytes" Width="80" MinWidth="60" MaxWidth="120"/>
+                                <DataGridTextColumn Header="READ" Binding="{Binding FormattedDiskRead}" SortMemberPath="DiskReadMBps" Width="70" MinWidth="55" MaxWidth="110"/>
+                                <DataGridTextColumn Header="WRITE" Binding="{Binding FormattedDiskWrite}" SortMemberPath="DiskWriteMBps" Width="70" MinWidth="55" MaxWidth="110"/>
+                                <DataGridTextColumn Header="SOCKETS" Binding="{Binding FormattedSockets}" SortMemberPath="ActiveSockets" Width="65" MinWidth="50" MaxWidth="100"/>
+                                <DataGridTextColumn Header="THREADS" Binding="{Binding ThreadCount}" SortMemberPath="ThreadCount" Width="60" MinWidth="45" MaxWidth="90"/>
+                                <DataGridTextColumn Header="STATUS" Binding="{Binding Status}" Width="65" MinWidth="50" MaxWidth="90"/>
                             </DataGrid.Columns>
                         </DataGrid>
                     </Grid>

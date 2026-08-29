@@ -66,7 +66,12 @@ public static class UpdateManager
             _httpClient.DefaultRequestHeaders.UserAgent.Clear();
             _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("Clocky-Telemetry/1.0.0 (Windows NT)");
 
-            string json = await _httpClient.GetStringAsync(feedUrl);
+            using var req = new HttpRequestMessage(HttpMethod.Get, feedUrl);
+            req.Headers.CacheControl = new System.Net.Http.Headers.CacheControlHeaderValue { NoCache = true, NoStore = true };
+            using var resp = await _httpClient.SendAsync(req);
+            resp.EnsureSuccessStatusCode();
+
+            string json = await resp.Content.ReadAsStringAsync();
             var manifest = JsonSerializer.Deserialize<UpdateManifest>(json, new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true
@@ -164,6 +169,15 @@ public static class UpdateManager
         string scriptPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Clocky", "Updates", "apply_update.ps1");
 
+        string scriptDir = Path.GetDirectoryName(scriptPath)!;
+        if (!Directory.Exists(scriptDir))
+        {
+            Directory.CreateDirectory(scriptDir);
+        }
+
+        string escapedNew = newExePath.Replace("'", "''");
+        string escapedCurrent = currentExe.Replace("'", "''");
+
         string scriptContent = $@"
 param()
 $ErrorActionPreference = 'SilentlyContinue'
@@ -173,18 +187,25 @@ try {{
 }} catch {{}}
 Start-Sleep -Milliseconds 400
 
+$src = '{escapedNew}'
+$dst = '{escapedCurrent}'
+
 $attempts = 0
 while ($attempts -lt 10) {{
     try {{
-        Move-Item -Path '{newExePath}' -Destination '{currentExe}' -Force
-        break
+        if (Test-Path -LiteralPath $src) {{
+            Move-Item -LiteralPath $src -Destination $dst -Force
+            break
+        }}
     }} catch {{
         Start-Sleep -Milliseconds 500
         $attempts++
     }}
 }}
 
-Start-Process -FilePath '{currentExe}'
+if (Test-Path -LiteralPath $dst) {{
+    Start-Process -FilePath $dst
+}}
 ";
 
         File.WriteAllText(scriptPath, scriptContent);

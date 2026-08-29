@@ -1,8 +1,12 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
+using Microsoft.Diagnostics.Tracing.Parsers;
+using Microsoft.Diagnostics.Tracing.Session;
 
 namespace Clocky.Core;
 
@@ -10,6 +14,7 @@ public class ProcessTracker : IDisposable
 {
     private readonly Dictionary<int, long> _prevCpuTimes = new(512);
     private readonly Dictionary<int, (ulong ReadBytes, ulong WriteBytes)> _prevIoBytes = new(512);
+    private readonly Dictionary<int, (long Recv, long Sent)> _prevNetBytes = new(512);
     private DateTime _prevSampleTime = DateTime.UtcNow;
     private readonly int _logicalCoreCount = Math.Max(1, Environment.ProcessorCount);
     private readonly object _syncLock = new();
@@ -17,6 +22,12 @@ public class ProcessTracker : IDisposable
     // Reusable unmanaged buffer for NtQuerySystemInformation (2MB preallocated)
     private IntPtr _nativeBuffer = IntPtr.Zero;
     private const int NativeBufferSize = 2 * 1024 * 1024;
+
+    // Real-time Kernel ETW Session for exact per-packet byte counters
+    private TraceEventSession? _etwSession;
+    private Task? _etwTask;
+    private readonly ConcurrentDictionary<int, long> _etwRecvBytes = new();
+    private readonly ConcurrentDictionary<int, long> _etwSentBytes = new();
 
     // Cache of active network PIDs (refreshed every 2 seconds)
     private HashSet<int> _cachedNetPids = new();
@@ -36,6 +47,47 @@ public class ProcessTracker : IDisposable
             _nativeBuffer = Marshal.AllocHGlobal(NativeBufferSize);
         }
         catch { }
+
+        StartEtwNetworkTracing();
+    }
+
+    private void StartEtwNetworkTracing()
+    {
+        try
+        {
+            if (TraceEventSession.IsElevated() == true)
+            {
+                _etwSession = new TraceEventSession("ClockyKernelNetTrace");
+                _etwSession.EnableKernelProvider(KernelTraceEventParser.Keywords.NetworkTCPIP);
+
+                _etwSession.Source.Kernel.TcpIpRecv += data =>
+                {
+                    if (data.ProcessID > 0)
+                        _etwRecvBytes.AddOrUpdate(data.ProcessID, data.size, (_, prev) => prev + data.size);
+                };
+                _etwSession.Source.Kernel.TcpIpSend += data =>
+                {
+                    if (data.ProcessID > 0)
+                        _etwSentBytes.AddOrUpdate(data.ProcessID, data.size, (_, prev) => prev + data.size);
+                };
+                _etwSession.Source.Kernel.UdpIpRecv += data =>
+                {
+                    if (data.ProcessID > 0)
+                        _etwRecvBytes.AddOrUpdate(data.ProcessID, data.size, (_, prev) => prev + data.size);
+                };
+                _etwSession.Source.Kernel.UdpIpSend += data =>
+                {
+                    if (data.ProcessID > 0)
+                        _etwSentBytes.AddOrUpdate(data.ProcessID, data.size, (_, prev) => prev + data.size);
+                };
+
+                _etwTask = Task.Run(() =>
+                {
+                    try { _etwSession.Source.Process(); } catch { }
+                });
+            }
+        }
+        catch { }
     }
 
     public void Dispose()
@@ -52,10 +104,18 @@ public class ProcessTracker : IDisposable
                 try { ctr.Dispose(); } catch { }
             }
             _gpuCounters.Clear();
+
+            try
+            {
+                _etwSession?.Stop();
+                _etwSession?.Dispose();
+                _etwSession = null;
+            }
+            catch { }
         }
     }
 
-    public ProcessTelemetrySnapshot Poll()
+    public ProcessTelemetrySnapshot Poll(float systemDownKBps = 0f, float systemUpKBps = 0f)
     {
         lock (_syncLock)
         {
@@ -65,7 +125,8 @@ public class ProcessTracker : IDisposable
 
             var processMap = new Dictionary<int, ProcessItem>(512);
             var currentCpuTimes = new Dictionary<int, long>(512);
-            var currentIoBytes = new Dictionary<int, (ulong Read, ulong Write)>(512);
+            var currentIoBytes = new Dictionary<int, (ulong ReadBytes, ulong WriteBytes)>(512);
+            var currentNetBytes = new Dictionary<int, (long Recv, long Sent)>(512);
 
             // 1. Fast Native Kernel Process Enumeration via NtQuerySystemInformation
             if (_nativeBuffer != IntPtr.Zero)
@@ -90,62 +151,68 @@ public class ProcessTracker : IDisposable
                             if (pName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
                                 pName = pName.Substring(0, pName.Length - 4);
 
-                            long curCpuTime = proc.UserTime + proc.KernelTime;
-                            currentCpuTimes[pid] = curCpuTime;
+                            long rawCpuTime = proc.UserTime + proc.KernelTime;
+                            currentCpuTimes[pid] = rawCpuTime;
+                            currentIoBytes[pid] = ((ulong)proc.ReadTransferCount, (ulong)proc.WriteTransferCount);
 
-                            float cpuPct = 0f;
+                            float cpuUsage = 0f;
+                            float diskReadMBps = 0f;
+                            float diskWriteMBps = 0f;
+
                             if (_prevCpuTimes.TryGetValue(pid, out long prevCpu))
                             {
-                                long deltaTicks = curCpuTime - prevCpu;
-                                if (deltaTicks > 0)
+                                long deltaCpu = rawCpuTime - prevCpu;
+                                if (deltaCpu > 0)
                                 {
-                                    // 100-nanosecond units to milliseconds: divide by 10,000
-                                    double deltaMs = deltaTicks / 10000.0;
-                                    cpuPct = (float)Math.Clamp((deltaMs / (deltaSec * 1000.0 * _logicalCoreCount)) * 100.0, 0.0, 100.0);
+                                    double cpuPercentTotal = (deltaCpu / (deltaSec * 10000000.0)) * 100.0;
+                                    cpuUsage = (float)Math.Clamp(cpuPercentTotal, 0.0, 100.0 * _logicalCoreCount);
                                 }
                             }
 
-                            ulong readBytes = (ulong)Math.Max(0, proc.ReadTransferCount);
-                            ulong writeBytes = (ulong)Math.Max(0, proc.WriteTransferCount);
-                            currentIoBytes[pid] = (readBytes, writeBytes);
-
-                            float downKBps = 0f;
-                            float upKBps = 0f;
-                            if (_prevIoBytes.TryGetValue(pid, out var prevIo) && (prevIo.ReadBytes > 0 || prevIo.WriteBytes > 0))
+                            if (_prevIoBytes.TryGetValue(pid, out var prevIo))
                             {
-                                ulong deltaRead = readBytes >= prevIo.ReadBytes ? readBytes - prevIo.ReadBytes : 0;
-                                ulong deltaWrite = writeBytes >= prevIo.WriteBytes ? writeBytes - prevIo.WriteBytes : 0;
-
-                                downKBps = (float)(deltaRead / (deltaSec * 1024.0));
-                                upKBps = (float)(deltaWrite / (deltaSec * 1024.0));
-
-                                // Sanity check clamp
-                                if (downKBps > 500f * 1024f) downKBps = 0f;
-                                if (upKBps > 500f * 1024f) upKBps = 0f;
+                                ulong deltaRead = (ulong)proc.ReadTransferCount >= prevIo.ReadBytes ? (ulong)proc.ReadTransferCount - prevIo.ReadBytes : 0;
+                                ulong deltaWrite = (ulong)proc.WriteTransferCount >= prevIo.WriteBytes ? (ulong)proc.WriteTransferCount - prevIo.WriteBytes : 0;
+                                diskReadMBps = (float)(deltaRead / (deltaSec * 1024.0 * 1024.0));
+                                diskWriteMBps = (float)(deltaWrite / (deltaSec * 1024.0 * 1024.0));
                             }
 
-                            long wsMem = proc.WorkingSetSize.ToInt64();
-                            long privMem = proc.PagefileUsage.ToInt64();
-                            if (privMem == 0 && proc.PrivatePageCount != IntPtr.Zero)
-                                privMem = proc.PrivatePageCount.ToInt64() * 4096;
+                            float netDownKBps = 0f;
+                            float netUpKBps = 0f;
+                            if (_etwSession != null)
+                            {
+                                long curRecv = _etwRecvBytes.GetValueOrDefault(pid, 0L);
+                                long curSent = _etwSentBytes.GetValueOrDefault(pid, 0L);
+                                currentNetBytes[pid] = (curRecv, curSent);
 
-                            var item = new ProcessItem
+                                if (_prevNetBytes.TryGetValue(pid, out var prevNet))
+                                {
+                                    long deltaRecv = curRecv >= prevNet.Recv ? curRecv - prevNet.Recv : 0;
+                                    long deltaSent = curSent >= prevNet.Sent ? curSent - prevNet.Sent : 0;
+                                    netDownKBps = (float)(deltaRecv / (deltaSec * 1024.0));
+                                    netUpKBps = (float)(deltaSent / (deltaSec * 1024.0));
+                                }
+                            }
+
+                            processMap[pid] = new ProcessItem
                             {
                                 Pid = pid,
                                 Name = pName,
-                                CpuPercent = cpuPct,
-                                PrivateMemoryBytes = privMem,
-                                WorkingSetBytes = wsMem,
-                                NetDownSpeedKBps = downKBps,
-                                NetUpSpeedKBps = upKBps,
+                                InstanceCount = 1,
+                                CpuPercent = cpuUsage,
+                                PrivateMemoryBytes = (long)proc.PrivatePageCount,
+                                WorkingSetBytes = proc.WorkingSetSize.ToInt64(),
+                                DiskReadMBps = diskReadMBps,
+                                DiskWriteMBps = diskWriteMBps,
+                                NetDownSpeedKBps = netDownKBps,
+                                NetUpSpeedKBps = netUpKBps,
                                 ThreadCount = (int)proc.NumberOfThreads,
                                 Status = "Running"
                             };
-
-                            processMap[pid] = item;
                         }
 
-                        if (proc.NextEntryOffset == 0) break;
+                        if (proc.NextEntryOffset == 0)
+                            break;
                         curr = IntPtr.Add(curr, (int)proc.NextEntryOffset);
                     }
                 }
@@ -163,6 +230,15 @@ public class ProcessTracker : IDisposable
                 _prevIoBytes[kvp.Key] = kvp.Value;
             }
 
+            if (_etwSession != null)
+            {
+                _prevNetBytes.Clear();
+                foreach (var kvp in currentNetBytes)
+                {
+                    _prevNetBytes[kvp.Key] = kvp.Value;
+                }
+            }
+
             if (!DetailedMode)
             {
                 return _lastDetailed;
@@ -171,13 +247,16 @@ public class ProcessTracker : IDisposable
             // 2. Gather GPU Engine Utilization per Process
             PollGpuCounters(processMap);
 
-            // 3. Match active network sockets to refine network priority (cached for 2 seconds)
-            if ((now - _lastNetPidRefresh).TotalSeconds >= 2.0 || _cachedNetPids.Count == 0)
+            // 3. Match active network sockets per PID (refreshed every 2 seconds)
+            var (establishedSockets, totalSockets) = GetActiveNetworkSockets();
+            foreach (var kvp in totalSockets)
             {
-                _lastNetPidRefresh = now;
-                _cachedNetPids = GetActiveNetworkPids();
+                if (processMap.TryGetValue(kvp.Key, out var pItem))
+                {
+                    pItem.ActiveSockets = kvp.Value;
+                    pItem.EstablishedSockets = establishedSockets.GetValueOrDefault(kvp.Key, 0);
+                }
             }
-            var netPids = _cachedNetPids;
 
             // Group and bundle processes with the exact same name (e.g. multi-process browsers, IDE workers)
             var bundledList = processMap.Values
@@ -196,6 +275,10 @@ public class ProcessTracker : IDisposable
                         GpuVramMb = g.Sum(p => p.GpuVramMb),
                         PrivateMemoryBytes = g.Sum(p => p.PrivateMemoryBytes),
                         WorkingSetBytes = g.Sum(p => p.WorkingSetBytes),
+                        DiskReadMBps = g.Sum(p => p.DiskReadMBps),
+                        DiskWriteMBps = g.Sum(p => p.DiskWriteMBps),
+                        EstablishedSockets = g.Sum(p => p.EstablishedSockets),
+                        ActiveSockets = g.Sum(p => p.ActiveSockets),
                         NetDownSpeedKBps = g.Sum(p => p.NetDownSpeedKBps),
                         NetUpSpeedKBps = g.Sum(p => p.NetUpSpeedKBps),
                         ThreadCount = g.Sum(p => p.ThreadCount),
@@ -241,37 +324,38 @@ public class ProcessTracker : IDisposable
                 topGpu = leaderboardCandidates.OrderByDescending(p => p.GpuPercent).Take(3).ToList();
             }
 
-            // Top Network: Prioritize network-connected processes with active I/O
-            var topNetDown = leaderboardCandidates
-                .Where(p => p.NetDownSpeedKBps > 0.05f && (netPids.Contains(p.Pid) || IsCommonNetworkApp(p.Name)))
-                .OrderByDescending(p => p.NetDownSpeedKBps)
+            // Top Disk I/O: Apps driving real SSD/HDD read & write bandwidth
+            var topDiskIo = leaderboardCandidates
+                .Where(p => p.DiskReadMBps > 0.05f || p.DiskWriteMBps > 0.05f)
+                .OrderByDescending(p => p.DiskReadMBps + p.DiskWriteMBps)
                 .Take(3)
                 .ToList();
 
-            if (topNetDown.Count < 3)
+            if (topDiskIo.Count < 3)
             {
-                var fallbackDown = leaderboardCandidates
-                    .Where(p => (netPids.Contains(p.Pid) || IsCommonNetworkApp(p.Name)) && !topNetDown.Contains(p))
-                    .OrderByDescending(p => p.NetDownSpeedKBps)
-                    .ThenByDescending(p => p.WorkingSetBytes)
-                    .Take(3 - topNetDown.Count);
-                topNetDown.AddRange(fallbackDown);
+                var fallbackDisk = leaderboardCandidates
+                    .Where(p => !topDiskIo.Contains(p))
+                    .OrderByDescending(p => p.WorkingSetBytes)
+                    .Take(3 - topDiskIo.Count);
+                topDiskIo.AddRange(fallbackDisk);
             }
 
-            var topNetUp = leaderboardCandidates
-                .Where(p => p.NetUpSpeedKBps > 0.05f && (netPids.Contains(p.Pid) || IsCommonNetworkApp(p.Name)))
-                .OrderByDescending(p => p.NetUpSpeedKBps)
+            // Top Active Network: Processes ranked by real-time upload & download throughput, then established connections
+            var topNet = leaderboardCandidates
+                .Where(p => p.NetDownSpeedKBps > 0.05f || p.NetUpSpeedKBps > 0.05f || p.EstablishedSockets > 0 || p.ActiveSockets > 0)
+                .OrderByDescending(p => p.NetDownSpeedKBps + p.NetUpSpeedKBps)
+                .ThenByDescending(p => p.EstablishedSockets)
+                .ThenByDescending(p => p.ActiveSockets)
                 .Take(3)
                 .ToList();
 
-            if (topNetUp.Count < 3)
+            if (topNet.Count < 3)
             {
-                var fallbackUp = leaderboardCandidates
-                    .Where(p => (netPids.Contains(p.Pid) || IsCommonNetworkApp(p.Name)) && !topNetUp.Contains(p))
-                    .OrderByDescending(p => p.NetUpSpeedKBps)
-                    .ThenByDescending(p => p.WorkingSetBytes)
-                    .Take(3 - topNetUp.Count);
-                topNetUp.AddRange(fallbackUp);
+                var fallbackNet = leaderboardCandidates
+                    .Where(p => !topNet.Contains(p))
+                    .OrderByDescending(p => p.WorkingSetBytes)
+                    .Take(3 - topNet.Count);
+                topNet.AddRange(fallbackNet);
             }
 
             _lastDetailed = new ProcessTelemetrySnapshot
@@ -279,8 +363,8 @@ public class ProcessTracker : IDisposable
                 TopCpu = topCpu,
                 TopGpu = topGpu,
                 TopRam = topRam,
-                TopNetDown = topNetDown,
-                TopNetUp = topNetUp,
+                TopDiskIo = topDiskIo,
+                TopNet = topNet,
                 AllProcesses = allList
                     .OrderByDescending(p => p.WorkingSetBytes)
                     .ThenByDescending(p => p.CpuPercent)
@@ -290,45 +374,21 @@ public class ProcessTracker : IDisposable
         }
     }
 
-    private static bool IsCommonNetworkApp(string pName)
+    private static (Dictionary<int, int> Established, Dictionary<int, int> Total) GetActiveNetworkSockets()
     {
-        string name = pName.ToLowerInvariant();
-        return name.Contains("chrome") ||
-               name.Contains("librewolf") ||
-               name.Contains("firefox") ||
-               name.Contains("msedge") ||
-               name.Contains("brave") ||
-               name.Contains("discord") ||
-               name.Contains("steam") ||
-               name.Contains("spotify") ||
-               name.Contains("antigravity") ||
-               name.Contains("code") ||
-               name.Contains("language_server") ||
-               name.Contains("python") ||
-               name.Contains("node") ||
-               name.Contains("git") ||
-               name.Contains("curl") ||
-               name.Contains("msedgewebview2") ||
-               name.Contains("telegram") ||
-               name.Contains("slack") ||
-               name.Contains("qbittorrent") ||
-               name.Contains("epicgames");
-    }
-
-    private static HashSet<int> GetActiveNetworkPids()
-    {
-        var pids = new HashSet<int>();
+        var established = new Dictionary<int, int>();
+        var total = new Dictionary<int, int>();
         try
         {
-            // 1. TCP Connections
+            // 1. IPv4 TCP Connections
             int size = 0;
-            GetExtendedTcpTable(IntPtr.Zero, ref size, true, 2, TCP_TABLE_CLASS.TCP_TABLE_OWNER_PID_CONNECTIONS);
+            GetExtendedTcpTable(IntPtr.Zero, ref size, true, 2, TCP_TABLE_CLASS.TCP_TABLE_OWNER_PID_ALL);
             if (size > 0)
             {
                 IntPtr pTable = Marshal.AllocHGlobal(size);
                 try
                 {
-                    if (GetExtendedTcpTable(pTable, ref size, true, 2, TCP_TABLE_CLASS.TCP_TABLE_OWNER_PID_CONNECTIONS) == 0)
+                    if (GetExtendedTcpTable(pTable, ref size, true, 2, TCP_TABLE_CLASS.TCP_TABLE_OWNER_PID_ALL) == 0)
                     {
                         int count = Marshal.ReadInt32(pTable);
                         IntPtr rowPtr = IntPtr.Add(pTable, 4);
@@ -336,7 +396,15 @@ public class ProcessTracker : IDisposable
                         for (int i = 0; i < count; i++)
                         {
                             var row = Marshal.PtrToStructure<MIB_TCPROW_OWNER_PID>(rowPtr);
-                            if (row.owningPid > 4) pids.Add((int)row.owningPid);
+                            int pid = (int)row.owningPid;
+                            if (pid > 4)
+                            {
+                                total[pid] = total.GetValueOrDefault(pid, 0) + 1;
+                                if (row.state == 5) // MIB_TCP_STATE_ESTAB
+                                {
+                                    established[pid] = established.GetValueOrDefault(pid, 0) + 1;
+                                }
+                            }
                             rowPtr = IntPtr.Add(rowPtr, rowSize);
                         }
                     }
@@ -347,7 +415,42 @@ public class ProcessTracker : IDisposable
                 }
             }
 
-            // 2. UDP Listeners
+            // 2. IPv6 TCP Connections
+            size = 0;
+            GetExtendedTcpTable(IntPtr.Zero, ref size, true, 23, TCP_TABLE_CLASS.TCP_TABLE_OWNER_PID_ALL);
+            if (size > 0)
+            {
+                IntPtr pTable = Marshal.AllocHGlobal(size);
+                try
+                {
+                    if (GetExtendedTcpTable(pTable, ref size, true, 23, TCP_TABLE_CLASS.TCP_TABLE_OWNER_PID_ALL) == 0)
+                    {
+                        int count = Marshal.ReadInt32(pTable);
+                        IntPtr rowPtr = IntPtr.Add(pTable, 4);
+                        int rowSize = Marshal.SizeOf<MIB_TCP6ROW_OWNER_PID>();
+                        for (int i = 0; i < count; i++)
+                        {
+                            var row = Marshal.PtrToStructure<MIB_TCP6ROW_OWNER_PID>(rowPtr);
+                            int pid = (int)row.owningPid;
+                            if (pid > 4)
+                            {
+                                total[pid] = total.GetValueOrDefault(pid, 0) + 1;
+                                if (row.state == 5) // MIB_TCP_STATE_ESTAB
+                                {
+                                    established[pid] = established.GetValueOrDefault(pid, 0) + 1;
+                                }
+                            }
+                            rowPtr = IntPtr.Add(rowPtr, rowSize);
+                        }
+                    }
+                }
+                finally
+                {
+                    Marshal.FreeHGlobal(pTable);
+                }
+            }
+
+            // 3. UDP Listeners
             size = 0;
             GetExtendedUdpTable(IntPtr.Zero, ref size, true, 2, UDP_TABLE_CLASS.UDP_TABLE_OWNER_PID);
             if (size > 0)
@@ -363,7 +466,11 @@ public class ProcessTracker : IDisposable
                         for (int i = 0; i < count; i++)
                         {
                             var row = Marshal.PtrToStructure<MIB_UDPROW_OWNER_PID>(rowPtr);
-                            if (row.owningPid > 4) pids.Add((int)row.owningPid);
+                            int pid = (int)row.owningPid;
+                            if (pid > 4)
+                            {
+                                total[pid] = total.GetValueOrDefault(pid, 0) + 1;
+                            }
                             rowPtr = IntPtr.Add(rowPtr, rowSize);
                         }
                     }
@@ -375,7 +482,7 @@ public class ProcessTracker : IDisposable
             }
         }
         catch { }
-        return pids;
+        return (established, total);
     }
 
     private void PollGpuCounters(Dictionary<int, ProcessItem> processMap)
@@ -549,6 +656,21 @@ public class ProcessTracker : IDisposable
         public uint localPort;
         public uint remoteAddr;
         public uint remotePort;
+        public uint owningPid;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MIB_TCP6ROW_OWNER_PID
+    {
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 16)]
+        public byte[] localAddr;
+        public uint localScopeId;
+        public uint localPort;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 16)]
+        public byte[] remoteAddr;
+        public uint remoteScopeId;
+        public uint remotePort;
+        public uint state;
         public uint owningPid;
     }
 

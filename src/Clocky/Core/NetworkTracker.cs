@@ -3,8 +3,10 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
+using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 
 namespace Clocky.Core;
 
@@ -31,6 +33,21 @@ public class NetworkTracker : IDisposable
     private string _lastPrimaryName = "No Network";
     private string _lastPrimaryIp = "";
 
+    [DllImport("iphlpapi.dll", ExactSpelling = true)]
+    private static extern int GetBestInterface(uint destAddr, out uint bestIfIndex);
+
+    private static int GetTargetIfIndex()
+    {
+        try
+        {
+            uint dest = BitConverter.ToUInt32(IPAddress.Parse("8.8.8.8").GetAddressBytes(), 0);
+            if (GetBestInterface(dest, out uint idx) == 0)
+                return (int)idx;
+        }
+        catch { }
+        return -1;
+    }
+
     public (List<NetworkInterfaceTelemetry> Interfaces, float TotalDownKBps, float TotalUpKBps, ulong TotalBytesRecv, ulong TotalBytesSent, string PrimaryNetName, string PrimaryIp) Poll()
     {
         var now = DateTime.UtcNow;
@@ -45,6 +62,8 @@ public class NetworkTracker : IDisposable
         ulong totalBytesSent = 0;
         string primaryName = "No Network";
         string primaryIp = "";
+        int bestIfIndex = GetTargetIfIndex();
+        int highestPrimaryScore = -1;
 
         try
         {
@@ -186,14 +205,29 @@ public class NetworkTracker : IDisposable
 
                 resultList.Add(item);
 
-                // Determine primary network
-                if (isUp && !string.IsNullOrEmpty(ipv4) && !ipv4.StartsWith("169.254"))
+                // Determine primary network using kernel routing & gateway scoring
+                int ifIdx = -1;
+                try { ifIdx = ipProps.GetIPv4Properties()?.Index ?? -1; } catch { }
+
+                bool isVirtual = typeDesc.Contains("VPN", StringComparison.OrdinalIgnoreCase) ||
+                                 typeDesc.Contains("Virtual", StringComparison.OrdinalIgnoreCase) ||
+                                 nic.Description.Contains("Virtual", StringComparison.OrdinalIgnoreCase) ||
+                                 nic.Description.Contains("ZeroTier", StringComparison.OrdinalIgnoreCase) ||
+                                 nic.Description.Contains("Tailscale", StringComparison.OrdinalIgnoreCase);
+
+                int primaryScore = 0;
+                if (ifIdx > 0 && ifIdx == bestIfIndex) primaryScore += 1000;
+                if (!string.IsNullOrEmpty(gateway) && !gateway.StartsWith("0.0.0.0")) primaryScore += 500;
+                if (!isVirtual) primaryScore += 200;
+                if (nic.NetworkInterfaceType == NetworkInterfaceType.Ethernet || nic.NetworkInterfaceType == NetworkInterfaceType.GigabitEthernet) primaryScore += 50;
+                else if (nic.NetworkInterfaceType == NetworkInterfaceType.Wireless80211) primaryScore += 40;
+                if (!string.IsNullOrEmpty(ipv4)) primaryScore += 10;
+
+                if (isUp && !string.IsNullOrEmpty(ipv4) && !ipv4.StartsWith("169.254") && primaryScore > highestPrimaryScore)
                 {
-                    if (primaryName == "No Network" || nic.NetworkInterfaceType == NetworkInterfaceType.Wireless80211 || nic.NetworkInterfaceType == NetworkInterfaceType.Ethernet)
-                    {
-                        primaryName = $"{nic.Name} ({typeDesc})";
-                        primaryIp = ipv4;
-                    }
+                    highestPrimaryScore = primaryScore;
+                    primaryName = $"{nic.Name} ({typeDesc})";
+                    primaryIp = ipv4;
                 }
             }
         }
