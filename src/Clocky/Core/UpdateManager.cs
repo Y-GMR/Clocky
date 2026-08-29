@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
+using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows;
@@ -113,51 +114,90 @@ public static class UpdateManager
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Clocky", "Updates");
         Directory.CreateDirectory(updatesDir);
 
-        string targetFile = Path.Combine(updatesDir, "Clocky_Update.exe");
-        if (File.Exists(targetFile))
+        string tempFile = Path.Combine(updatesDir, $"Clocky_Update_{Guid.NewGuid():N}.tmp");
+        string finalFile = Path.Combine(updatesDir, "Clocky_Update.exe");
+
+        try
         {
-            try { File.Delete(targetFile); } catch { }
-        }
-
-        using var response = await _httpClient.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead);
-        response.EnsureSuccessStatusCode();
-
-        long totalBytes = response.Content.Headers.ContentLength ?? -1L;
-        using var stream = await response.Content.ReadAsStreamAsync();
-        using (var fileStream = new FileStream(targetFile, FileMode.Create, FileAccess.Write, FileShare.None, 81920, true))
-        {
-            var buffer = new byte[81920];
-            long totalRead = 0;
-            int bytesRead;
-
-            while ((bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length)) > 0)
+            if (File.Exists(tempFile))
             {
-                await fileStream.WriteAsync(buffer, 0, bytesRead);
-                totalRead += bytesRead;
+                try { File.Delete(tempFile); } catch { }
+            }
+            if (File.Exists(finalFile))
+            {
+                try { File.Delete(finalFile); } catch { }
+            }
 
-                if (totalBytes > 0 && progress != null)
+            using var response = await _httpClient.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead);
+            response.EnsureSuccessStatusCode();
+
+            long totalBytes = response.Content.Headers.ContentLength ?? -1L;
+            using (var stream = await response.Content.ReadAsStreamAsync())
+            using (var fileStream = new FileStream(tempFile, FileMode.Create, FileAccess.Write, FileShare.None, 81920, true))
+            {
+                var buffer = new byte[81920];
+                long totalRead = 0;
+                int bytesRead;
+
+                while ((bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length)) > 0)
                 {
-                    int pct = (int)((totalRead * 100) / totalBytes);
-                    progress.Report(pct);
+                    await fileStream.WriteAsync(buffer, 0, bytesRead);
+                    totalRead += bytesRead;
+
+                    if (totalBytes > 0 && progress != null)
+                    {
+                        int pct = (int)((totalRead * 100) / totalBytes);
+                        progress.Report(pct);
+                    }
+                }
+
+                // Verify exact byte count if Content-Length header was present
+                if (totalBytes > 0 && totalRead < totalBytes)
+                {
+                    throw new IOException($"Download stream truncated. Received {totalRead} of {totalBytes} bytes.");
+                }
+
+                // Minimum sanity check: Standalone single-file Clocky is at least 30 MB
+                if (totalRead < 30_000_000)
+                {
+                    throw new IOException($"Downloaded payload is too small ({totalRead} bytes). Expected complete binary.");
                 }
             }
-        }
 
-        // Cryptographic Hash Verification: Reject corrupted or tampered binaries
-        if (!string.IsNullOrWhiteSpace(expectedSha256))
-        {
-            using var sha = System.Security.Cryptography.SHA256.Create();
-            using var verifyStream = File.OpenRead(targetFile);
-            byte[] hashBytes = await sha.ComputeHashAsync(verifyStream);
-            string actualHash = Convert.ToHexString(hashBytes).ToLowerInvariant();
-            if (!string.Equals(actualHash, expectedSha256.Trim().ToLowerInvariant(), StringComparison.OrdinalIgnoreCase))
+            // Cryptographic Hash Verification: Reject corrupted or tampered binaries
+            if (!string.IsNullOrWhiteSpace(expectedSha256))
             {
-                try { File.Delete(targetFile); } catch { }
-                throw new InvalidOperationException($"Update binary verification failed. Expected SHA256: {expectedSha256}, Actual: {actualHash}. Installation rejected.");
+                using var sha = System.Security.Cryptography.SHA256.Create();
+                using var verifyStream = File.OpenRead(tempFile);
+                byte[] hashBytes = await sha.ComputeHashAsync(verifyStream);
+                string actualHash = Convert.ToHexString(hashBytes).ToLowerInvariant();
+                if (!string.Equals(actualHash, expectedSha256.Trim().ToLowerInvariant(), StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException($"Update binary verification failed. Expected SHA256: {expectedSha256}, Actual: {actualHash}. Installation rejected.");
+                }
             }
-        }
 
-        return targetFile;
+            // Atomic promotion to final update file
+            if (File.Exists(finalFile))
+            {
+                try { File.Delete(finalFile); } catch { }
+            }
+            File.Move(tempFile, finalFile, overwrite: true);
+
+            return finalFile;
+        }
+        catch
+        {
+            if (File.Exists(tempFile))
+            {
+                try { File.Delete(tempFile); } catch { }
+            }
+            if (File.Exists(finalFile))
+            {
+                try { File.Delete(finalFile); } catch { }
+            }
+            throw;
+        }
     }
 
     public static void ApplyUpdateAndRestart(string newExePath)
@@ -165,6 +205,18 @@ public static class UpdateManager
         string currentExe = Process.GetCurrentProcess().MainModule?.FileName 
                          ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Clocky.exe");
         int currentPid = Process.GetCurrentProcess().Id;
+
+        // Pre-flight check: Verify source executable exists and satisfies minimum size
+        if (!File.Exists(newExePath))
+        {
+            throw new FileNotFoundException("Update executable not found on disk.", newExePath);
+        }
+
+        var newFileInfo = new FileInfo(newExePath);
+        if (newFileInfo.Length < 30_000_000)
+        {
+            throw new InvalidOperationException($"Update executable is corrupted or truncated ({newFileInfo.Length} bytes). Aborting update.");
+        }
 
         string scriptPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Clocky", "Updates", "apply_update.ps1");
@@ -189,26 +241,60 @@ Start-Sleep -Milliseconds 400
 
 $src = '{escapedNew}'
 $dst = '{escapedCurrent}'
+$bak = ""$dst.bak""
 
-$attempts = 0
-while ($attempts -lt 10) {{
-    try {{
-        if (Test-Path -LiteralPath $src) {{
-            Move-Item -LiteralPath $src -Destination $dst -Force
-            break
+# Minimum size constraint for valid Clocky standalone binary (30 MB)
+$minBytes = 30000000
+
+if (Test-Path -LiteralPath $src) {{
+    $srcItem = Get-Item -LiteralPath $src
+    if ($srcItem.Length -ge $minBytes) {{
+        # 1. Create a safe rollback backup of current working executable
+        if (Test-Path -LiteralPath $dst) {{
+            try {{
+                Copy-Item -LiteralPath $dst -Destination $bak -Force
+            }} catch {{}}
         }}
-    }} catch {{
-        Start-Sleep -Milliseconds 500
-        $attempts++
+
+        # 2. Attempt to swap new binary into destination
+        $swapped = $false
+        $attempts = 0
+        while ($attempts -lt 10) {{
+            try {{
+                Move-Item -LiteralPath $src -Destination $dst -Force
+                if ((Test-Path -LiteralPath $dst) -and ((Get-Item -LiteralPath $dst).Length -ge $minBytes)) {{
+                    $swapped = $true
+                    break
+                }}
+            }} catch {{
+                Start-Sleep -Milliseconds 500
+                $attempts++
+            }}
+        }}
+
+        # 3. Automatic Rollback if swap failed or corrupted destination
+        if (-not $swapped) {{
+            if (Test-Path -LiteralPath $bak) {{
+                try {{
+                    Copy-Item -LiteralPath $bak -Destination $dst -Force
+                }} catch {{}}
+            }}
+        }} else {{
+            # Success: clean up temporary backup copy
+            try {{
+                Remove-Item -LiteralPath $bak -Force -ErrorAction SilentlyContinue
+            }} catch {{}}
+        }}
     }}
 }}
 
+# 4. Restart Clocky
 if (Test-Path -LiteralPath $dst) {{
     Start-Process -FilePath $dst
 }}
 ";
 
-        File.WriteAllText(scriptPath, scriptContent);
+        File.WriteAllText(scriptPath, scriptContent, Encoding.UTF8);
 
         var psi = new ProcessStartInfo
         {

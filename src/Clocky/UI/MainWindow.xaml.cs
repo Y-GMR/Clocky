@@ -2976,7 +2976,7 @@ public partial class MainWindow : Window
             var (hasUpdate, manifest, msg) = await UpdateManager.CheckForUpdatesAsync(_config.UpdateFeedUrl);
             if (hasUpdate && manifest != null && !string.IsNullOrEmpty(manifest.DownloadUrl))
             {
-                if (!string.IsNullOrEmpty(_stagedUpdateExePath) && File.Exists(_stagedUpdateExePath))
+                if (!string.IsNullOrEmpty(_stagedUpdateExePath) && File.Exists(_stagedUpdateExePath) && new FileInfo(_stagedUpdateExePath).Length >= 30_000_000)
                 {
                     if (BadgeUpdateAvailable != null) BadgeUpdateAvailable.Visibility = Visibility.Visible;
                     if (TxtUpdateBadge != null) TxtUpdateBadge.Text = $"Update v{manifest.Version} Ready (Click to Restart)";
@@ -3016,7 +3016,7 @@ public partial class MainWindow : Window
 
     private void BadgeUpdateAvailable_Click(object sender, MouseButtonEventArgs e)
     {
-        if (!string.IsNullOrEmpty(_stagedUpdateExePath) && File.Exists(_stagedUpdateExePath))
+        if (!string.IsNullOrEmpty(_stagedUpdateExePath) && File.Exists(_stagedUpdateExePath) && new FileInfo(_stagedUpdateExePath).Length >= 30_000_000)
         {
             var res = System.Windows.MessageBox.Show(
                 "A new update for Clocky has been downloaded and verified.\n\nRestart Clocky now to apply the update?",

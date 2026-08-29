@@ -1,8 +1,8 @@
 {
-  "version": "1.1.0",
-  "releaseDate": "2026-08-30",
-  "changelog": "Real-time Kernel ETW network packet accounting, 5th top-process network leaderboard card, DataGrid table resizing stability and auto horizontal scroll.",
-  "downloadUrl": "https://github.com/Y-GMR/Clocky/releases/latest/download/Clocky.exe",
-  "mandatory": false,
-  "sha256": "d741e4ee13784714ec5b5552f57254c524dcabce8ad13d37d731bddb4b47020d"
+    "version": "1.1.1",
+    "releaseDate": "2026-08-30",
+    "changelog": "Atomic staged update downloads, payload size validation, and automatic PowerShell rollback recovery.",
+    "downloadUrl": "https://github.com/Y-GMR/Clocky/releases/latest/download/Clocky.exe",
+    "mandatory": false,
+    "sha256": "68746699637cb31d633bbbe347e5200d11dfe1579c28f0493f988bfc900b3537"
 }

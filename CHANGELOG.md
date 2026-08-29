@@ -4,6 +4,14 @@ All notable changes to Clocky are documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## [1.1.1] - 2026-08-30
+
+### Fixed
+- Fixed auto-updater payload truncation vulnerability by enforcing atomic `.tmp` staging, stream completion checks, and minimum binary size validation.
+- Added automatic transactional rollback in `apply_update.ps1` to create `.bak` executable backups and restore known-good binaries if replacement fails.
+
+---
+
 ## [1.1.0] - 2026-08-30
 
 ### Added

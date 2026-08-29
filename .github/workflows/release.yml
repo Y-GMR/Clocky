@@ -46,13 +46,27 @@ jobs:
         git push origin HEAD:master
       continue-on-error: true
 
+    - name: Extract Release Notes from CHANGELOG.md
+      shell: pwsh
+      run: |
+        $tag = "${{ github.ref_name }}"
+        $version = $tag.TrimStart('v')
+        $content = Get-Content "CHANGELOG.md" -Raw
+        $pattern = "(?s)## \[$version\] - \d{4}-\d{2}-\d{2}\r?\n\r?\n(.*?)(?=\r?\n## \[|\r?\n---|\Z)"
+        if ($content -match $pattern) {
+            $notes = $matches[1].Trim()
+            $notes | Out-File -FilePath "release_notes.md" -Encoding utf8
+        } else {
+            "Release $tag" | Out-File -FilePath "release_notes.md" -Encoding utf8
+        }
+
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v2
       with:
+        body_path: release_notes.md
         files: |
           dist/Clocky.exe
           dist/SHA256SUMS.txt
           version.json
         draft: false
         prerelease: false
-        generate_release_notes: true
