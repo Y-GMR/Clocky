@@ -4,5 +4,5 @@
     "changelog":  "Added Windows boot auto-start and start-minimized preferences, and optimized update download deduplication.",
     "downloadUrl":  "https://github.com/Y-GMR/Clocky/releases/latest/download/Clocky.exe",
     "mandatory":  false,
-    "sha256":  "07d2fd1eed0971b72838ac783acf5f2119242a895e86aca94a39d36453fe8162"
+    "sha256":  "9101b0a35d3a57434e62caccae49384bb59a466fcc7f0a7471e0a0ad75579580"
 }
