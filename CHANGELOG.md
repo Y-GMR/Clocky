@@ -4,6 +4,15 @@ All notable changes to Clocky are documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## [1.0.8] - 2026-08-29
+
+### Fixed
+- Fixed auto-update download loop by replacing static version references in `UpdateManager` with dynamic assembly metadata extraction and 3-component version normalization.
+- Fixed window overflow and clipped header on high-DPI scaled displays (e.g. 1080p @ 150%, 768p) by dynamically clamping initial dimensions and position to `SystemParameters.WorkArea`.
+- Reduced minimum window constraints to `600px` height and `960px` width for improved compatibility with compact screens.
+
+---
+
 ## [1.0.7] - 2026-08-29
 
 ### Fixed
