@@ -9,7 +9,13 @@
         FontFamily="'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif"
         FontSize="12"
         Icon="/Assets/icon.png"
-        WindowStartupLocation="CenterScreen">
+        WindowStartupLocation="CenterScreen"
+        WindowStyle="None"
+        AllowsTransparency="False">
+    
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="32" GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False" ResizeBorderThickness="6"/>
+    </WindowChrome.WindowChrome>
     
     <Window.Resources>
         <!-- DYNAMIC SKEUOMORPHIC & DISCORD PALETTE BRUSHES -->
@@ -474,7 +480,22 @@
 
     <!-- MAIN WINDOW SKEUOMORPHIC CONTAINER -->
     <Grid Background="{DynamicResource BrushWindowBg}">
-        <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="32"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Custom Title Bar -->
+        <Grid Grid.Row="0" Background="{DynamicResource BrushPanelBg}">
+            <TextBlock Text="Clocky" Foreground="{DynamicResource BrushTextSecondary}" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" Margin="12,0,0,0" IsHitTestVisible="False"/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" WindowChrome.IsHitTestVisibleInChrome="True">
+                <Button Content="—" Width="46" Style="{StaticResource TechButton}" BorderThickness="0" Background="Transparent" Click="BtnMinimize_Click"/>
+                <Button Content="□" Width="46" Style="{StaticResource TechButton}" BorderThickness="0" Background="Transparent" Click="BtnMaximize_Click"/>
+                <Button Content="✕" Width="46" Style="{StaticResource TechButton}" BorderThickness="0" Background="Transparent" Click="BtnClose_Click"/>
+            </StackPanel>
+        </Grid>
+
+        <Grid Margin="12" Grid.Row="1">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/> <!-- 1. Top Skeuomorphic Header & Hardware Vitals -->
                 <RowDefinition Height="*"/>    <!-- 2. Asymmetrical 2-Column Stage (Left Rail + Center Stage) -->

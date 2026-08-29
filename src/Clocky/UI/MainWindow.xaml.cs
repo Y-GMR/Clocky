@@ -28,6 +28,21 @@ namespace Clocky.UI;
 
 public partial class MainWindow : Window
 {
+    private void BtnMinimize_Click(object sender, RoutedEventArgs e)
+    {
+        WindowState = WindowState.Minimized;
+    }
+
+    private void BtnMaximize_Click(object sender, RoutedEventArgs e)
+    {
+        WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+    }
+
+    private void BtnClose_Click(object sender, RoutedEventArgs e)
+    {
+        Close();
+    }
+
     private const int MaxHistoryPoints = 60;
 
     // Test Server Interop Properties
