@@ -1,8 +1,8 @@
-{
+﻿{
     "version":  "1.0.8",
     "releaseDate":  "2026-08-29",
     "changelog":  "Dynamic assembly version resolution for auto-updater loop fix, responsive display work-area clamping on launch.",
     "downloadUrl":  "https://github.com/Y-GMR/Clocky/releases/latest/download/Clocky.exe",
     "mandatory":  false,
-    "sha256":  "cb49a0c82baf7506ab5d92681a6cb1be4ebb63e574e6c04cd91643343cbba2d3"
+    "sha256":  "f7b9348858a72ae13bdf4d6c82b088aac2ae4a4eaf79161f0d5b1ffbae6c9709"
 }
