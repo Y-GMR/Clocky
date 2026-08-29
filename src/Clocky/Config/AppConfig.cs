@@ -73,7 +73,15 @@ public class AppConfig
             {
                 var json = File.ReadAllText(path);
                 var config = JsonSerializer.Deserialize<AppConfig>(json);
-                if (config != null) return config;
+                if (config != null)
+                {
+                    if (string.IsNullOrWhiteSpace(config.UpdateFeedUrl) || config.UpdateFeedUrl.Contains("IwangPetra") || config.UpdateFeedUrl.Contains("/main/"))
+                    {
+                        config.UpdateFeedUrl = "https://raw.githubusercontent.com/Y-GMR/Clocky/master/version.json";
+                        config.Save();
+                    }
+                    return config;
+                }
             }
         }
         catch { }
