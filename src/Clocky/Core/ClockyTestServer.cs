@@ -11,6 +11,7 @@ using System.Windows.Media.Imaging;
 using Clocky.Config;
 using Clocky.UI;
 
+#if DEBUG
 namespace Clocky.Core;
 
 public class ClockyTestServer : IDisposable
@@ -298,3 +299,4 @@ public class ClockyTestServer : IDisposable
         try { _listener?.Stop(); } catch { }
     }
 }
+#endif

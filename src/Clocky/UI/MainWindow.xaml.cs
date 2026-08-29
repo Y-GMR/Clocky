@@ -59,7 +59,9 @@ public partial class MainWindow : Window
     private readonly HardwareEngine _engine;
     private readonly AppConfig _config;
     private readonly Action? _onReloadTrayIcons;
-    private readonly ClockyTestServer _testServer;
+#if DEBUG
+    private readonly ClockyTestServer? _testServer;
+#endif
 
     private string _currentThemeMode = "System";
     private bool _isDarkTheme = true;
@@ -152,8 +154,10 @@ public partial class MainWindow : Window
 
         InitializeComponent();
 
-        // Initialize embedded native test server
+#if DEBUG
+        // Initialize embedded native test server (Debug builds only)
         _testServer = new ClockyTestServer(this, config);
+#endif
 
         InitializeTheme();
 
