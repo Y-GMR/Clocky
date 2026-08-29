@@ -1,0 +1,34 @@
+## Build & Compilation Output
+bin/
+obj/
+dist/
+[Bb]in/
+[Oo]bj/
+[Dd]ist/
+
+## Visual Studio & IDE Artifacts
+.vs/
+.vscode/
+*.user
+*.userosscache
+*.sln.docstates
+*.suo
+
+## Backups & Scratch Folders
+backups/
+scratch/
+*.bak
+*.bak*
+
+## Logs & Diagnostics
+*.log
+app_debug.log
+app__debug.log
+crash_*.log
+
+## OS Generated Files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store

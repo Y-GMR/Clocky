@@ -1,0 +1,1838 @@
+<Window x:Class="Clocky.UI.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Clocky" 
+        Height="890" Width="1420"
+        MinHeight="680" MinWidth="1080"
+        Background="{DynamicResource BrushWindowBg}"
+        Foreground="{DynamicResource BrushTextPrimary}"
+        FontFamily="'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif"
+        FontSize="12"
+        Icon="/Assets/icon.png"
+        WindowStartupLocation="CenterScreen">
+    
+    <Window.Resources>
+        <!-- DYNAMIC SKEUOMORPHIC & DISCORD PALETTE BRUSHES -->
+        <SolidColorBrush x:Key="BrushWindowBg" Color="#1E2124"/>
+        <SolidColorBrush x:Key="BrushPanelBg" Color="#282B30"/>
+        <SolidColorBrush x:Key="BrushCardBg" Color="#36393E"/>
+        <SolidColorBrush x:Key="BrushCardSunken" Color="#282B30"/>
+        <SolidColorBrush x:Key="BrushCardBorder" Color="#424549"/>
+        <SolidColorBrush x:Key="BrushBorderHighlight" Color="#FFFFFF"/>
+        <SolidColorBrush x:Key="BrushTextPrimary" Color="#FFFFFF"/>
+        <SolidColorBrush x:Key="BrushTextSecondary" Color="#B9BBBE"/>
+        <SolidColorBrush x:Key="BrushTextMuted" Color="#72767D"/>
+        <SolidColorBrush x:Key="BrushAccentCobalt" Color="#7289DA"/>
+        <SolidColorBrush x:Key="BrushAccentCobaltDark" Color="#5B6EAE"/>
+        <SolidColorBrush x:Key="BrushAccentSlate" Color="#B9BBBE"/>
+        <SolidColorBrush x:Key="BrushMetricGreen" Color="#22C55E"/>
+        <SolidColorBrush x:Key="BrushMetricRed" Color="#EF4444"/>
+        <SolidColorBrush x:Key="BrushGridLine" Color="#424549"/>
+
+        <!-- SKEUOMORPHIC SOFT DROP SHADOWS -->
+        <DropShadowEffect x:Key="SkeuoCardShadow" BlurRadius="14" ShadowDepth="3" Direction="315" Color="#0F1113" Opacity="0.8"/>
+        <DropShadowEffect x:Key="SkeuoButtonShadow" BlurRadius="6" ShadowDepth="2" Direction="315" Color="#0F1113" Opacity="0.65"/>
+        <DropShadowEffect x:Key="SkeuoActiveShadow" BlurRadius="10" ShadowDepth="2" Direction="315" Color="#7289DA" Opacity="0.4"/>
+        <DropShadowEffect x:Key="SkeuoSunkenShadow" BlurRadius="6" ShadowDepth="2" Direction="135" Color="#0F1113" Opacity="0.5"/>
+
+        <!-- Soft Skeuomorphic ScrollBar -->
+        <Style x:Key="SkeuoScrollBarThumb" TargetType="{x:Type Thumb}">
+            <Setter Property="OverridesDefaultStyle" Value="true"/>
+            <Setter Property="IsTabStop" Value="false"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Thumb}">
+                        <Border x:Name="thumbBorder" Background="{DynamicResource BrushCardBorder}" CornerRadius="4" Margin="2,0"/>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="true">
+                                <Setter TargetName="thumbBorder" Property="Background" Value="{DynamicResource BrushAccentCobalt}"/>
+                            </Trigger>
+                            <Trigger Property="IsDragging" Value="true">
+                                <Setter TargetName="thumbBorder" Property="Background" Value="{DynamicResource BrushAccentCobaltDark}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SkeuoScrollBarThumbHoriz" TargetType="{x:Type Thumb}">
+            <Setter Property="OverridesDefaultStyle" Value="true"/>
+            <Setter Property="IsTabStop" Value="false"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Thumb}">
+                        <Border x:Name="thumbBorderHoriz" Background="{DynamicResource BrushCardBorder}" CornerRadius="4" Margin="0,2"/>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="true">
+                                <Setter TargetName="thumbBorderHoriz" Property="Background" Value="{DynamicResource BrushAccentCobalt}"/>
+                            </Trigger>
+                            <Trigger Property="IsDragging" Value="true">
+                                <Setter TargetName="thumbBorderHoriz" Property="Background" Value="{DynamicResource BrushAccentCobaltDark}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="{x:Type ScrollBar}">
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
+            <Setter Property="OverridesDefaultStyle" Value="true"/>
+            <Style.Triggers>
+                <Trigger Property="Orientation" Value="Vertical">
+                    <Setter Property="Width" Value="8"/>
+                    <Setter Property="Height" Value="Auto"/>
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="{x:Type ScrollBar}">
+                                <Grid Background="Transparent">
+                                    <Track x:Name="PART_Track" IsDirectionReversed="true">
+                                        <Track.Thumb>
+                                            <Thumb Style="{StaticResource SkeuoScrollBarThumb}"/>
+                                        </Track.Thumb>
+                                    </Track>
+                                </Grid>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Trigger>
+                <Trigger Property="Orientation" Value="Horizontal">
+                    <Setter Property="Height" Value="8"/>
+                    <Setter Property="Width" Value="Auto"/>
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="{x:Type ScrollBar}">
+                                <Grid Background="Transparent">
+                                    <Track x:Name="PART_Track">
+                                        <Track.Thumb>
+                                            <Thumb Style="{StaticResource SkeuoScrollBarThumbHoriz}"/>
+                                        </Track.Thumb>
+                                    </Track>
+                                </Grid>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- SKEUOMORPHIC TACTILE BUTTON -->
+        <Style x:Key="TechButton" TargetType="Button">
+            <Setter Property="Background" Value="{DynamicResource BrushCardBg}"/>
+            <Setter Property="Foreground" Value="{DynamicResource BrushTextPrimary}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource BrushCardBorder}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="btnBorder" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8" Padding="{TemplateBinding Padding}"
+                                Effect="{DynamicResource SkeuoButtonShadow}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="btnBorder" Property="Background" Value="{DynamicResource BrushCardSunken}"/>
+                                <Setter TargetName="btnBorder" Property="BorderBrush" Value="{DynamicResource BrushAccentCobalt}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="btnBorder" Property="Background" Value="{DynamicResource BrushAccentCobalt}"/>
+                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                                <Setter TargetName="btnBorder" Property="Effect" Value="{x:Null}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- SKEUOMORPHIC TOGGLE BUTTON (PIN / OPTIONS) -->
+        <Style x:Key="TechToggleButton" TargetType="ToggleButton">
+            <Setter Property="Background" Value="{DynamicResource BrushCardBg}"/>
+            <Setter Property="Foreground" Value="{DynamicResource BrushTextSecondary}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource BrushCardBorder}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="10,5"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="border" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8" Padding="{TemplateBinding Padding}"
+                                Effect="{DynamicResource SkeuoButtonShadow}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource BrushAccentCobalt}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource BrushAccentCobalt}"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="{DynamicResource BrushAccentCobalt}"/>
+                                <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource BrushAccentCobaltDark}"/>
+                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                                <Setter TargetName="border" Property="Effect" Value="{DynamicResource SkeuoActiveShadow}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- THEME PILL SWITCH BUTTON -->
+        <Style x:Key="ThemePillButton" TargetType="RadioButton">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource BrushTextSecondary}"/>
+            <Setter Property="Padding" Value="8,4"/>
+            <Setter Property="FontSize" Value="10.5"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="pillBorder" Background="{TemplateBinding Background}"
+                                CornerRadius="6" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Foreground" Value="{DynamicResource BrushTextPrimary}"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="pillBorder" Property="Background" Value="{DynamicResource BrushCardBg}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource BrushAccentCobalt}"/>
+                                <Setter TargetName="pillBorder" Property="Effect" Value="{DynamicResource SkeuoButtonShadow}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- SKEUOMORPHIC VERTICAL NAVIGATION WIDGET TAB -->
+        <Style x:Key="CyberdeckTabButton" TargetType="RadioButton">
+            <Setter Property="Background" Value="{DynamicResource BrushCardBg}"/>
+            <Setter Property="Foreground" Value="{DynamicResource BrushTextPrimary}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource BrushCardBorder}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="14,12"/>
+            <Setter Property="Margin" Value="0,0,0,8"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="tabBorder" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="10" Padding="{TemplateBinding Padding}"
+                                Effect="{DynamicResource SkeuoButtonShadow}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <!-- Left Indicator Pip -->
+                                <Rectangle x:Name="activePip" Grid.Column="0" Width="4" Height="22" RadiusX="2" RadiusY="2" Fill="{DynamicResource BrushCardBorder}" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                                <ContentPresenter Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Left" IsHitTestVisible="False"/>
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="tabBorder" Property="Background" Value="{DynamicResource BrushCardSunken}"/>
+                                <Setter TargetName="tabBorder" Property="BorderBrush" Value="{DynamicResource BrushAccentCobalt}"/>
+                                <Setter TargetName="activePip" Property="Fill" Value="{DynamicResource BrushAccentCobalt}"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="tabBorder" Property="Background" Value="{DynamicResource BrushCardBg}"/>
+                                <Setter TargetName="tabBorder" Property="BorderBrush" Value="{DynamicResource BrushAccentCobalt}"/>
+                                <Setter TargetName="activePip" Property="Fill" Value="{DynamicResource BrushAccentCobalt}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource BrushAccentCobalt}"/>
+                                <Setter TargetName="tabBorder" Property="Effect" Value="{DynamicResource SkeuoActiveShadow}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- SKEUOMORPHIC COMBOBOX STYLE -->
+        <ControlTemplate x:Key="SkeuoComboBoxToggleButton" TargetType="ToggleButton">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition />
+                    <ColumnDefinition Width="20" />
+                </Grid.ColumnDefinitions>
+                <Border x:Name="Border" Grid.ColumnSpan="2" CornerRadius="8" Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Effect="{DynamicResource SkeuoButtonShadow}"/>
+                <Path x:Name="Arrow" Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" Data="M 0 0 L 4 4 L 8 0 Z" Fill="{DynamicResource BrushTextSecondary}"/>
+            </Grid>
+            <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="true">
+                    <Setter TargetName="Border" Property="BorderBrush" Value="{DynamicResource BrushAccentCobalt}" />
+                    <Setter TargetName="Arrow" Property="Fill" Value="{DynamicResource BrushAccentCobalt}" />
+                </Trigger>
+            </ControlTemplate.Triggers>
+        </ControlTemplate>
+
+        <Style x:Key="TechComboBox" TargetType="ComboBox">
+            <Setter Property="Foreground" Value="{DynamicResource BrushTextPrimary}"/>
+            <Setter Property="Background" Value="{DynamicResource BrushCardBg}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource BrushCardBorder}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="8,4"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <ToggleButton Name="ToggleButton" Template="{StaticResource SkeuoComboBoxToggleButton}" Grid.Column="2" Focusable="false"
+                                          IsChecked="{Binding Path=IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}" ClickMode="Press"/>
+                            <ContentPresenter Name="ContentSite" IsHitTestVisible="False" Content="{TemplateBinding SelectionBoxItem}"
+                                              ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                              ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
+                                              Margin="8,4,24,4" VerticalAlignment="Center" HorizontalAlignment="Left" />
+                            <Popup Name="Popup" Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}" AllowsTransparency="True" Focusable="False" PopupAnimation="Slide">
+                                <Grid Name="DropDown" SnapsToDevicePixels="True" MinWidth="{TemplateBinding ActualWidth}" MaxHeight="{TemplateBinding MaxDropDownHeight}">
+                                    <Border x:Name="DropDownBorder" Background="{DynamicResource BrushCardBg}" BorderThickness="1" BorderBrush="{DynamicResource BrushCardBorder}" CornerRadius="8" Margin="0,4,0,0" Effect="{DynamicResource SkeuoCardShadow}"/>
+                                    <ScrollViewer Margin="4" SnapsToDevicePixels="True">
+                                        <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Contained" />
+                                    </ScrollViewer>
+                                </Grid>
+                            </Popup>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    
+        <!-- SKEUOMORPHIC DATAGRID STYLING -->
+        <Style TargetType="{x:Type DataGrid}">
+            <Setter Property="Background" Value="{DynamicResource BrushCardSunken}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource BrushCardBorder}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="GridLinesVisibility" Value="Horizontal"/>
+            <Setter Property="HorizontalGridLinesBrush" Value="{DynamicResource BrushCardBorder}"/>
+            <Setter Property="RowHeaderWidth" Value="0"/>
+        </Style>
+
+        <Style TargetType="{x:Type DataGridRow}">
+            <Setter Property="Background" Value="{DynamicResource BrushCardBg}"/>
+            <Setter Property="Foreground" Value="{DynamicResource BrushTextPrimary}"/>
+            <Style.Triggers>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource BrushAccentCobalt}"/>
+                    <Setter Property="Foreground" Value="#FFFFFF"/>
+                </Trigger>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource BrushCardSunken}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style TargetType="{x:Type DataGridCell}">
+            <Setter Property="Foreground" Value="{DynamicResource BrushTextPrimary}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="4,2"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type DataGridCell}">
+                        <Border Padding="{TemplateBinding Padding}" Background="{TemplateBinding Background}">
+                            <ContentPresenter VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="Transparent"/>
+                    <Setter Property="Foreground" Value="#FFFFFF"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="ColumnHeaderGripperStyle" TargetType="{x:Type Thumb}">
+            <Setter Property="Width" Value="8"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Cursor" Value="SizeWE"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Thumb}">
+                        <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}"/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="{x:Type DataGridColumnHeader}">
+            <Setter Property="Background" Value="{DynamicResource BrushCardSunken}"/>
+            <Setter Property="Foreground" Value="{DynamicResource BrushTextSecondary}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Padding" Value="8,5"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource BrushCardBorder}"/>
+            <Setter Property="BorderThickness" Value="0,0,1,1"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type DataGridColumnHeader}">
+                        <Grid>
+                            <Border x:Name="HeaderBorder"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    Padding="{TemplateBinding Padding}">
+                                <DockPanel LastChildFill="True">
+                                    <Grid DockPanel.Dock="Right" Width="10" Height="12" Margin="6,0,0,0" VerticalAlignment="Center">
+                                        <Path x:Name="SortArrowNeutral" Data="M 1 4 L 5 0 L 9 4 M 1 8 L 5 12 L 9 8" Stroke="{DynamicResource BrushTextMuted}" StrokeThickness="1.2" Opacity="0.4" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                                        <Path x:Name="SortArrowAsc" Data="M 1 7 L 5 1 L 9 7 Z" Fill="{DynamicResource BrushAccentCobalt}" VerticalAlignment="Center" HorizontalAlignment="Center" Visibility="Collapsed"/>
+                                        <Path x:Name="SortArrowDesc" Data="M 1 1 L 5 7 L 9 1 Z" Fill="{DynamicResource BrushAccentCobalt}" VerticalAlignment="Center" HorizontalAlignment="Center" Visibility="Collapsed"/>
+                                    </Grid>
+                                    <ContentPresenter VerticalAlignment="Center" HorizontalAlignment="Left"/>
+                                </DockPanel>
+                            </Border>
+                            <Thumb x:Name="PART_LeftHeaderGripper" HorizontalAlignment="Left" Style="{StaticResource ColumnHeaderGripperStyle}"/>
+                            <Thumb x:Name="PART_RightHeaderGripper" HorizontalAlignment="Right" Style="{StaticResource ColumnHeaderGripperStyle}"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="SortDirection" Value="Ascending">
+                                <Setter TargetName="SortArrowNeutral" Property="Visibility" Value="Collapsed"/>
+                                <Setter TargetName="SortArrowAsc" Property="Visibility" Value="Visible"/>
+                                <Setter Property="Foreground" Value="{DynamicResource BrushAccentCobalt}"/>
+                            </Trigger>
+                            <Trigger Property="SortDirection" Value="Descending">
+                                <Setter TargetName="SortArrowNeutral" Property="Visibility" Value="Collapsed"/>
+                                <Setter TargetName="SortArrowDesc" Property="Visibility" Value="Visible"/>
+                                <Setter Property="Foreground" Value="{DynamicResource BrushAccentCobalt}"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="HeaderBorder" Property="Background" Value="{DynamicResource BrushCardBg}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource BrushTextPrimary}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- GLOBAL SKEUOMORPHIC TOOLTIP STYLE -->
+        <Style TargetType="{x:Type ToolTip}">
+            <Setter Property="OverridesDefaultStyle" Value="True"/>
+            <Setter Property="HasDropShadow" Value="True"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ToolTip}">
+                        <Border Background="{DynamicResource BrushCardSunken}"
+                                BorderBrush="{DynamicResource BrushCardBorder}"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Padding="10,8"
+                                Effect="{DynamicResource SkeuoCardShadow}">
+                            <ContentPresenter TextElement.Foreground="{DynamicResource BrushTextPrimary}"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- SKEUOMORPHIC SMOOTH PROGRESSBAR -->
+        <Style TargetType="{x:Type ProgressBar}">
+            <Setter Property="Background" Value="{DynamicResource BrushCardSunken}"/>
+            <Setter Property="Foreground" Value="{DynamicResource BrushAccentCobalt}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource BrushCardBorder}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ProgressBar}">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6"
+                                ClipToBounds="True">
+                            <Grid x:Name="PART_Track">
+                                <Border x:Name="PART_Indicator"
+                                        Background="{TemplateBinding Foreground}"
+                                        HorizontalAlignment="Left"
+                                        CornerRadius="5"/>
+                            </Grid>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+</Window.Resources>
+
+    <!-- MAIN WINDOW SKEUOMORPHIC CONTAINER -->
+    <Grid Background="{DynamicResource BrushWindowBg}">
+        <Grid Margin="12">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/> <!-- 1. Top Skeuomorphic Header & Hardware Vitals -->
+                <RowDefinition Height="*"/>    <!-- 2. Asymmetrical 2-Column Stage (Left Rail + Center Stage) -->
+                <RowDefinition Height="Auto"/> <!-- 3. Bottom Controller Action HUD Strip -->
+            </Grid.RowDefinitions>
+
+            <!-- 1. TOP SKEUOMORPHIC HEADER & SPEC STRIP (2-Tier Layout) -->
+            <Border Grid.Row="0" Background="{DynamicResource BrushPanelBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" CornerRadius="12" Padding="14,10" Margin="0,0,0,10" Effect="{DynamicResource SkeuoCardShadow}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Tier 1: System Info & Global Action Controls -->
+                    <DockPanel Grid.Row="0" Margin="0,0,0,8">
+                        <!-- Left: Hardware Branding & Model -->
+                        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Image x:Name="ImgClockyBrand" Source="/Assets/clocky_title_dark.png" Height="28" Margin="0,0,12,0" RenderOptions.BitmapScalingMode="HighQuality" VerticalAlignment="Center"/>
+                            <Border BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Background="{DynamicResource BrushCardSunken}" CornerRadius="8" Padding="8,4" Margin="0,0,10,0">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="SYSTEM: " FontSize="10.5" FontWeight="Bold" Foreground="{DynamicResource BrushTextSecondary}"/>
+                                    <TextBlock x:Name="TxtSystemModelName" Text="Detecting Hardware..." FontSize="10.5" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}"/>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+
+                        <!-- Right: Theme Switcher & Action Controls -->
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                            <!-- Theme Toggle Recessed Pill Dock -->
+                            <Border Background="{DynamicResource BrushCardSunken}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" CornerRadius="8" Padding="3" Margin="0,0,8,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <RadioButton x:Name="RadioThemeSystem" GroupName="ThemeGroup" Content="SYS" Style="{StaticResource ThemePillButton}" IsChecked="True" Checked="ThemeRadio_Checked"/>
+                                    <RadioButton x:Name="RadioThemeLight" GroupName="ThemeGroup" Content="LIGHT" Style="{StaticResource ThemePillButton}" Checked="ThemeRadio_Checked"/>
+                                    <RadioButton x:Name="RadioThemeDark" GroupName="ThemeGroup" Content="DARK" Style="{StaticResource ThemePillButton}" Checked="ThemeRadio_Checked"/>
+                                </StackPanel>
+                            </Border>
+
+                            <ToggleButton x:Name="BtnAlwaysOnTop" Style="{StaticResource TechToggleButton}" Margin="0,0,6,0" Click="BtnAlwaysOnTop_Click">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="PIN" Margin="0,0,4,0"/>
+                                </StackPanel>
+                            </ToggleButton>
+                            <Button Content="RESET" Style="{StaticResource TechButton}" Margin="0,0,6,0" Click="BtnResetStats_Click"/>
+                        </StackPanel>
+                    </DockPanel>
+
+                    <!-- Tier 2: Real-Time Hardware Vitals Strip (Full Width 4-Column UniformGrid - NEVER Gets Covered!) -->
+                    <UniformGrid Grid.Row="1" Columns="4" Margin="0,2,0,0">
+                        <Border BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Background="{DynamicResource BrushCardSunken}" CornerRadius="8" Padding="12,7" Margin="0,0,6,0" Effect="{DynamicResource SkeuoSunkenShadow}">
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <TextBlock Text="CPU: " Foreground="{DynamicResource BrushTextSecondary}" FontSize="12" FontWeight="SemiBold"/>
+                                <TextBlock x:Name="HdrCpu" Text="0% (0°C • 0W)" FontWeight="Bold" Foreground="{DynamicResource BrushHeaderVital}" FontSize="12" FontFamily="Consolas"/>
+                            </StackPanel>
+                        </Border>
+                        <Border BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Background="{DynamicResource BrushCardSunken}" CornerRadius="8" Padding="12,7" Margin="3,0,3,0" Effect="{DynamicResource SkeuoSunkenShadow}">
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <TextBlock Text="GPU: " Foreground="{DynamicResource BrushTextSecondary}" FontSize="12" FontWeight="SemiBold"/>
+                                <TextBlock x:Name="HdrGpu" Text="0% (0°C • 0W)" FontWeight="Bold" Foreground="{DynamicResource BrushHeaderVital}" FontSize="12" FontFamily="Consolas"/>
+                            </StackPanel>
+                        </Border>
+                        <Border BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Background="{DynamicResource BrushCardSunken}" CornerRadius="8" Padding="12,7" Margin="3,0,3,0" Effect="{DynamicResource SkeuoSunkenShadow}">
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <TextBlock Text="PSYS: " Foreground="{DynamicResource BrushTextSecondary}" FontSize="12" FontWeight="SemiBold"/>
+                                <TextBlock x:Name="HdrPower" Text="0 W (AC)" FontWeight="Bold" Foreground="{DynamicResource BrushHeaderVital}" FontSize="12" FontFamily="Consolas"/>
+                            </StackPanel>
+                        </Border>
+                        <Border BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Background="{DynamicResource BrushCardSunken}" CornerRadius="8" Padding="12,7" Margin="6,0,0,0" Effect="{DynamicResource SkeuoSunkenShadow}">
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <TextBlock Text="RAM: " Foreground="{DynamicResource BrushTextSecondary}" FontSize="12" FontWeight="SemiBold"/>
+                                <TextBlock x:Name="HdrRam" Text="0.0 / 0.0 GB" FontWeight="Bold" Foreground="{DynamicResource BrushHeaderVital}" FontSize="12" FontFamily="Consolas"/>
+                            </StackPanel>
+                        </Border>
+                    </UniformGrid>
+                </Grid>
+            </Border>
+
+            <!-- 2. ASYMMETRICAL 2-COLUMN STAGE (LEFT RAIL + CENTER STAGE) -->
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="260"/> <!-- Left: Vertical Navigation Matrix -->
+                    <ColumnDefinition Width="*"/>   <!-- Center: Telemetry Stage -->
+                </Grid.ColumnDefinitions>
+
+                <!-- LEFT RAIL: VERTICAL SENSORS SWITCHER DOCK -->
+                <Border Grid.Column="0" Background="{DynamicResource BrushPanelBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" CornerRadius="12" Padding="10" Margin="0,0,10,0" Effect="{DynamicResource SkeuoCardShadow}">
+                    <DockPanel LastChildFill="True">
+                        <!-- Category Header -->
+                        <Border DockPanel.Dock="Top" BorderBrush="{DynamicResource BrushAccentCobalt}" BorderThickness="3,0,0,0" Padding="8,2" Margin="0,0,0,12">
+                            <TextBlock Text="TELEMETRY NAVIGATION" FontWeight="Bold" FontSize="11" Foreground="{DynamicResource BrushTextSecondary}"/>
+                        </Border>
+
+                        <!-- Bottom Left Hero Brand Section (Yellow Circle Area) -->
+                        <Border DockPanel.Dock="Bottom" Margin="0,16,0,4" Padding="10,12" Background="{DynamicResource BrushCardSunken}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" CornerRadius="10" Effect="{DynamicResource SkeuoSunkenShadow}">
+                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <Image x:Name="ImgClockySidebarBrand" Source="/Assets/clocky_title_dark.png" Height="46" MaxWidth="180" HorizontalAlignment="Center" VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality"/>
+                                <TextBlock Text="Lightweight Hardware Telemetry" FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource BrushTextMuted}" HorizontalAlignment="Center" Margin="0,6,0,0"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Vertical Switcher Items -->
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel>
+                                <!-- TAB 0: ALL SENSORS -->
+                                <RadioButton x:Name="TabAllSensors" GroupName="NavTabs" Style="{StaticResource CyberdeckTabButton}" Checked="Tab_Checked">
+                                    <TextBlock Text="All Sensors Matrix" FontWeight="Bold" FontSize="12" VerticalAlignment="Center"/>
+                                </RadioButton>
+
+                                <!-- TAB 1: CPU TOPOLOGY -->
+                                <RadioButton x:Name="TabCpu" GroupName="NavTabs" Style="{StaticResource CyberdeckTabButton}" Checked="Tab_Checked">
+                                    <TextBlock x:Name="NavCpuText" Text="CPU (i7-13700HX)" FontWeight="Bold" FontSize="12" VerticalAlignment="Center"/>
+                                </RadioButton>
+
+                                <!-- TAB 2: GPU ENGINES -->
+                                <RadioButton x:Name="TabGpu" GroupName="NavTabs" Style="{StaticResource CyberdeckTabButton}" Checked="Tab_Checked">
+                                    <TextBlock x:Name="NavGpuText" Text="GPU (RTX 5050)" FontWeight="Bold" FontSize="12" VerticalAlignment="Center"/>
+                                </RadioButton>
+
+                                <!-- TAB 3: MEMORY & DISKS -->
+                                <RadioButton x:Name="TabMemoryDisks" GroupName="NavTabs" Style="{StaticResource CyberdeckTabButton}" Checked="Tab_Checked">
+                                    <TextBlock Text="Memory &amp; Storage" FontWeight="Bold" FontSize="12" VerticalAlignment="Center"/>
+                                </RadioButton>
+
+                                <!-- TAB 4: POWER & BATTERY -->
+                                <RadioButton x:Name="TabPower" GroupName="NavTabs" Style="{StaticResource CyberdeckTabButton}" IsChecked="True" Checked="Tab_Checked">
+                                    <TextBlock Text="Power &amp; Battery" FontWeight="Bold" FontSize="12" VerticalAlignment="Center"/>
+                                </RadioButton>
+
+                                <!-- TAB 5: INTERNET & NETWORK -->
+                                <RadioButton x:Name="TabNetwork" GroupName="NavTabs" Style="{StaticResource CyberdeckTabButton}" Checked="Tab_Checked">
+                                    <TextBlock Text="Internet &amp; Network" FontWeight="Bold" FontSize="12" VerticalAlignment="Center"/>
+                                </RadioButton>
+
+                                <!-- TAB 6: PROCESSES & TOP APPS -->
+                                <RadioButton x:Name="TabProcesses" GroupName="NavTabs" Style="{StaticResource CyberdeckTabButton}" Checked="Tab_Checked">
+                                    <TextBlock Text="Processes &amp; Apps" FontWeight="Bold" FontSize="12" VerticalAlignment="Center"/>
+                                </RadioButton>
+
+                                <!-- TAB 7: TRAY CONFIG -->
+                                <RadioButton x:Name="TabTray" GroupName="NavTabs" Style="{StaticResource CyberdeckTabButton}" Checked="Tab_Checked">
+                                    <TextBlock Text="Tray &amp; Preferences" FontWeight="Bold" FontSize="12" VerticalAlignment="Center"/>
+                                </RadioButton>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </DockPanel>
+                </Border>
+
+                <!-- CENTER STAGE: TELEMETRY VIEWPORTS -->
+                <Grid Grid.Column="1" Margin="2,0,0,0">
+                    <!-- VIEW 1: ALL SENSORS MATRIX -->
+                    <Grid x:Name="ViewAllSensors" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <DockPanel Grid.Row="0" Margin="0,0,0,6">
+                    <Button x:Name="BtnResetSort" DockPanel.Dock="Right" Content="Reset Sort" Style="{StaticResource TechButton}" Margin="6,0,0,0" Padding="10,4" Click="BtnResetSort_Click"/>
+                    <TextBox x:Name="TxtSensorFilter" HorizontalAlignment="Right" Width="260" Background="{DynamicResource BrushCardSunken}" Foreground="{DynamicResource BrushTextPrimary}" 
+                             BorderBrush="{DynamicResource BrushCardBorder}" Padding="6,4" TextChanged="TxtSensorFilter_TextChanged" Text="Filter sensors (e.g. CPU, Power, GPU)..." 
+                             GotFocus="TxtSensorFilter_GotFocus" LostFocus="TxtSensorFilter_LostFocus"/>
+                </DockPanel>
+
+                <DataGrid x:Name="GridAllSensors" Grid.Row="1" AutoGenerateColumns="False" CanUserSortColumns="True" CanUserResizeColumns="True" CanUserReorderColumns="True" Sorting="GridAllSensors_Sorting" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                          VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling" ScrollViewer.CanContentScroll="True" EnableRowVirtualization="True">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Category" Binding="{Binding Category}" SortMemberPath="Category" Width="170" MinWidth="80" MaxWidth="350"/>
+                        <DataGridTextColumn Header="Sensor Name" Binding="{Binding Name}" SortMemberPath="Name" Width="*" MinWidth="120"/>
+                        <DataGridTextColumn Header="Current" Binding="{Binding FormattedCurrent}" SortMemberPath="Value" Width="110" MinWidth="65" MaxWidth="180">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="FontWeight" Value="Bold"/>
+                                    <Setter Property="Foreground" Value="{DynamicResource BrushAccentCobalt}"/>
+                                    <Setter Property="TextAlignment" Value="Right"/>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+                        <DataGridTextColumn Header="Minimum" Binding="{Binding FormattedMin}" SortMemberPath="Min" Width="100" MinWidth="65" MaxWidth="180">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="{DynamicResource BrushAccentCobalt}"/>
+                                    <Setter Property="TextAlignment" Value="Right"/>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+                        <DataGridTextColumn Header="Maximum" Binding="{Binding FormattedMax}" SortMemberPath="Max" Width="100" MinWidth="65" MaxWidth="180">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="{DynamicResource BrushAccentCobalt}"/>
+                                    <Setter Property="TextAlignment" Value="Right"/>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+                        <DataGridTextColumn Header="Average" Binding="{Binding FormattedAvg}" SortMemberPath="Avg" Width="100" MinWidth="65" MaxWidth="180">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="{DynamicResource BrushAccentSlate}"/>
+                                    <Setter Property="TextAlignment" Value="Right"/>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+                        <DataGridTextColumn Header="Unit" Binding="{Binding Unit}" SortMemberPath="Unit" Width="70" MinWidth="45" MaxWidth="120"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Grid>
+
+            <!-- VIEW 2: CPU OBSERVABILITY & PER-CORE TOPOLOGY -->
+            <ScrollViewer x:Name="ViewCpu" Visibility="Collapsed" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <Grid Margin="0,0,4,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/> <!-- Top CPU Stats Strip -->
+                        <RowDefinition Height="Auto"/> <!-- 4 Dedicated Core Graphs (Load, Temp, Power, Freq) -->
+                        <RowDefinition Height="Auto"/> <!-- 24-Thread Per-Core Grid -->
+                    </Grid.RowDefinitions>
+
+                    <!-- Row 0: Top CPU Stats Strip -->
+                    <Border Grid.Row="0" Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="12,6" Margin="0,0,0,6">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="PACKAGE TEMP" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10"/>
+                                <TextBlock x:Name="CpuPkgTempText" Text="0.0 °C" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="RAPL POWER" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10"/>
+                                <TextBlock x:Name="CpuPkgPowerText" Text="0.0 W" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="CURRENT / PEAK CLOCK" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10"/>
+                                <TextBlock x:Name="CpuMaxFreqText" Text="0 / 0 MHz" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="3">
+                                <TextBlock Text="TOTAL LOAD" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10"/>
+                                <TextBlock x:Name="CpuTotalLoadText" Text="0.0 %" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="4">
+                                <TextBlock Text="CORE VID" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10"/>
+                                <TextBlock x:Name="CpuVidText" Text="0.000 V" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <!-- Row 1: 4 Dedicated Core Graphs (Load, Temp, Power, Freq) -->
+                    <UniformGrid Grid.Row="1" Rows="2" Columns="2" Margin="0,0,0,6">
+                        <!-- 1. CPU Total Utilization Graph -->
+                        <Border Height="130" Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="6" Margin="0,0,3,3">
+                            <Grid>
+                                <DockPanel VerticalAlignment="Top" Margin="2,0,2,0">
+                                    <TextBlock Text="CPU TOTAL UTILIZATION" FontWeight="Bold" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10"/>
+                                    <TextBlock x:Name="TxtCpuLoadVital" Text="0.0%" HorizontalAlignment="Right" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas" FontWeight="Bold" FontSize="10"/>
+                                </DockPanel>
+                                <Canvas x:Name="CanvasCpuLoad" Margin="0,16,0,14" Background="Transparent" ClipToBounds="True"/>
+                                <Grid VerticalAlignment="Bottom" Margin="2,0,2,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="-60s" Foreground="#6E7681" FontSize="8.5" FontFamily="Consolas"/>
+                                    <TextBlock Grid.Column="1" Text="-30s" Foreground="#6E7681" FontSize="8.5" FontFamily="Consolas" TextAlignment="Center"/>
+                                    <TextBlock Grid.Column="2" Text="Now" Foreground="#6E7681" FontSize="8.5" FontFamily="Consolas" TextAlignment="Right"/>
+                                </Grid>
+                            </Grid>
+                        </Border>
+
+                        <!-- 2. CPU Temperature Graph -->
+                        <Border Height="130" Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="6" Margin="3,0,0,3">
+                            <Grid>
+                                <DockPanel VerticalAlignment="Top" Margin="2,0,2,0">
+                                    <TextBlock Text="CPU PACKAGE &amp; CORE THERMALS" FontWeight="Bold" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10"/>
+                                    <TextBlock x:Name="TxtCpuTempVital" Text="0.0 °C" HorizontalAlignment="Right" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas" FontWeight="Bold" FontSize="10"/>
+                                </DockPanel>
+                                <Canvas x:Name="CanvasCpuTemp" Margin="0,16,0,14" Background="Transparent" ClipToBounds="True"/>
+                                <Grid VerticalAlignment="Bottom" Margin="2,0,2,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="-60s" Foreground="#6E7681" FontSize="8.5" FontFamily="Consolas"/>
+                                    <TextBlock Grid.Column="1" Text="-30s" Foreground="#6E7681" FontSize="8.5" FontFamily="Consolas" TextAlignment="Center"/>
+                                    <TextBlock Grid.Column="2" Text="Now" Foreground="#6E7681" FontSize="8.5" FontFamily="Consolas" TextAlignment="Right"/>
+                                </Grid>
+                            </Grid>
+                        </Border>
+
+                        <!-- 3. CPU Package Power Graph -->
+                        <Border Height="130" Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="6" Margin="0,3,3,0">
+                            <Grid>
+                                <DockPanel VerticalAlignment="Top" Margin="2,0,2,0">
+                                    <TextBlock Text="CPU RAPL PACKAGE POWER" FontWeight="Bold" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10"/>
+                                    <TextBlock x:Name="TxtCpuPowerVital" Text="0.0 W" HorizontalAlignment="Right" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas" FontWeight="Bold" FontSize="10"/>
+                                </DockPanel>
+                                <Canvas x:Name="CanvasCpuPower" Margin="0,16,0,14" Background="Transparent" ClipToBounds="True"/>
+                                <Grid VerticalAlignment="Bottom" Margin="2,0,2,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="-60s" Foreground="#6E7681" FontSize="8.5" FontFamily="Consolas"/>
+                                    <TextBlock Grid.Column="1" Text="-30s" Foreground="#6E7681" FontSize="8.5" FontFamily="Consolas" TextAlignment="Center"/>
+                                    <TextBlock Grid.Column="2" Text="Now" Foreground="#6E7681" FontSize="8.5" FontFamily="Consolas" TextAlignment="Right"/>
+                                </Grid>
+                            </Grid>
+                        </Border>
+
+                        <!-- 4. CPU Frequency Graph -->
+                        <Border Height="130" Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="6" Margin="3,3,0,0">
+                            <Grid>
+                                <DockPanel VerticalAlignment="Top" Margin="2,0,2,0">
+                                    <TextBlock Text="CPU CLOCK FREQUENCY" FontWeight="Bold" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10"/>
+                                    <TextBlock x:Name="TxtCpuFreqVital" Text="0 MHz" HorizontalAlignment="Right" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas" FontWeight="Bold" FontSize="10"/>
+                                </DockPanel>
+                                <Canvas x:Name="CanvasCpuFreq" Margin="0,16,0,14" Background="Transparent" ClipToBounds="True"/>
+                                <Grid VerticalAlignment="Bottom" Margin="2,0,2,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="-60s" Foreground="#6E7681" FontSize="8.5" FontFamily="Consolas"/>
+                                    <TextBlock Grid.Column="1" Text="-30s" Foreground="#6E7681" FontSize="8.5" FontFamily="Consolas" TextAlignment="Center"/>
+                                    <TextBlock Grid.Column="2" Text="Now" Foreground="#6E7681" FontSize="8.5" FontFamily="Consolas" TextAlignment="Right"/>
+                                </Grid>
+                            </Grid>
+                        </Border>
+                    </UniformGrid>
+
+                    <!-- Row 2: 24-Thread Per-Core Grid -->
+                    <Border Grid.Row="2" Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="8">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <!-- P-Core / Uniform Core Header -->
+                            <TextBlock x:Name="HdrPCores" Grid.Row="0" Text="PERFORMANCE CORES (8P / 16T)"
+                                       FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" FontSize="10.5" Margin="0,0,0,3"/>
+
+                            <!-- P-Core / Uniform Threads Grid -->
+                            <UniformGrid x:Name="GridPCores" Grid.Row="1" Columns="8" Rows="2" Margin="0,0,0,6"/>
+
+                            <!-- E-Core Header -->
+                            <TextBlock x:Name="HdrECores" Grid.Row="2" Text="EFFICIENCY CORES (8E)"
+                                       FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" FontSize="10.5" Margin="0,0,0,3"/>
+
+                            <!-- E-Core Threads Grid -->
+                            <UniformGrid x:Name="GridECores" Grid.Row="3" Columns="8" Rows="1"/>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </ScrollViewer>
+
+            <!-- VIEW 3: GPU GENUINE HARDWARE ENGINE TELEMETRY -->
+            <Grid x:Name="ViewGpu" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/> <!-- GPU Vitals Strip -->
+                    <RowDefinition Height="1.8*"/> <!-- 4 Dedicated Core Graphs (Util, Temp, Power, VRAM) -->
+                    <RowDefinition Height="2.2*"/> <!-- 6 Genuine Hardware Engines -->
+                    <RowDefinition Height="Auto"/> <!-- PCIe & VRAM Subsystems -->
+                </Grid.RowDefinitions>
+
+                <!-- Row 0: GPU Top Vitals Strip -->
+                <Border Grid.Row="0" Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="12,6" Margin="0,0,0,6">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="CORE / JUNCTION TEMP" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10"/>
+                            <TextBlock x:Name="GpuTempsText" Text="0.0 / 0.0 °C" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1">
+                            <TextBlock Text="BOARD POWER" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10"/>
+                            <TextBlock x:Name="GpuPowerText" Text="0.0 W" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="CORE / MEM CLOCKS" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10"/>
+                            <TextBlock x:Name="GpuClocksText" Text="0 / 0 MHz" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="3">
+                            <TextBlock Text="DEDICATED VRAM" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10"/>
+                            <TextBlock x:Name="GpuVramSummaryText" Text="0.0 / 8.0 GB (0%)" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="4">
+                            <TextBlock Text="CORE VOLTAGE (VDD)" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10"/>
+                            <TextBlock x:Name="GpuVoltFanText" Text="0.685 V • Auto" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- Row 1: 4 Dedicated Core Graphs (Util, Temp, Power, VRAM) -->
+                <UniformGrid Grid.Row="1" Rows="2" Columns="2" Margin="0,0,0,6">
+                    <!-- 1. GPU Utilization Graph -->
+                    <Border Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="6" Margin="0,0,3,3">
+                        <Grid>
+                            <DockPanel VerticalAlignment="Top" Margin="2,0,2,0">
+                                <TextBlock Text="GPU CORE UTILIZATION" FontWeight="Bold" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10"/>
+                                <TextBlock x:Name="TxtGpuUtilVital" Text="0.0%" HorizontalAlignment="Right" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas" FontWeight="Bold" FontSize="10"/>
+                            </DockPanel>
+                            <Canvas x:Name="CanvasGpuUtil" Margin="0,16,0,14" Background="Transparent" ClipToBounds="True"/>
+                            <Grid VerticalAlignment="Bottom" Margin="2,0,2,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="-60s" Foreground="#6E7681" FontSize="8.5" FontFamily="Consolas"/>
+                                <TextBlock Grid.Column="1" Text="-30s" Foreground="#6E7681" FontSize="8.5" FontFamily="Consolas" TextAlignment="Center"/>
+                                <TextBlock Grid.Column="2" Text="Now" Foreground="#6E7681" FontSize="8.5" FontFamily="Consolas" TextAlignment="Right"/>
+                            </Grid>
+                        </Grid>
+                    </Border>
+
+                    <!-- 2. GPU Temperature Graph -->
+                    <Border Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="6" Margin="3,0,0,3">
+                        <Grid>
+                            <DockPanel VerticalAlignment="Top" Margin="2,0,2,0">
+                                <TextBlock Text="GPU CORE &amp; HOTSPOT TEMP" FontWeight="Bold" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10"/>
+                                <TextBlock x:Name="TxtGpuTempVital" Text="0.0 °C" HorizontalAlignment="Right" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas" FontWeight="Bold" FontSize="10"/>
+                            </DockPanel>
+                            <Canvas x:Name="CanvasGpuTemp" Margin="0,16,0,14" Background="Transparent" ClipToBounds="True"/>
+                            <Grid VerticalAlignment="Bottom" Margin="2,0,2,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="-60s" Foreground="#6E7681" FontSize="8.5" FontFamily="Consolas"/>
+                                <TextBlock Grid.Column="1" Text="-30s" Foreground="#6E7681" FontSize="8.5" FontFamily="Consolas" TextAlignment="Center"/>
+                                <TextBlock Grid.Column="2" Text="Now" Foreground="#6E7681" FontSize="8.5" FontFamily="Consolas" TextAlignment="Right"/>
+                            </Grid>
+                        </Grid>
+                    </Border>
+
+                    <!-- 3. GPU Power Draw Graph -->
+                    <Border Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="6" Margin="0,3,3,0">
+                        <Grid>
+                            <DockPanel VerticalAlignment="Top" Margin="2,0,2,0">
+                                <TextBlock Text="GPU BOARD POWER DRAW" FontWeight="Bold" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10"/>
+                                <TextBlock x:Name="TxtGpuPowerVital" Text="0.0 W" HorizontalAlignment="Right" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas" FontWeight="Bold" FontSize="10"/>
+                            </DockPanel>
+                            <Canvas x:Name="CanvasGpuPower" Margin="0,16,0,14" Background="Transparent" ClipToBounds="True"/>
+                            <Grid VerticalAlignment="Bottom" Margin="2,0,2,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="-60s" Foreground="#6E7681" FontSize="8.5" FontFamily="Consolas"/>
+                                <TextBlock Grid.Column="1" Text="-30s" Foreground="#6E7681" FontSize="8.5" FontFamily="Consolas" TextAlignment="Center"/>
+                                <TextBlock Grid.Column="2" Text="Now" Foreground="#6E7681" FontSize="8.5" FontFamily="Consolas" TextAlignment="Right"/>
+                            </Grid>
+                        </Grid>
+                    </Border>
+
+                    <!-- 4. GPU VRAM Allocation Graph -->
+                    <Border Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="6" Margin="3,3,0,0">
+                        <Grid>
+                            <DockPanel VerticalAlignment="Top" Margin="2,0,2,0">
+                                <TextBlock Text="GPU DEDICATED VRAM USAGE" FontWeight="Bold" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10"/>
+                                <TextBlock x:Name="TxtGpuVramVital" Text="0.0 GB" HorizontalAlignment="Right" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas" FontWeight="Bold" FontSize="10"/>
+                            </DockPanel>
+                            <Canvas x:Name="CanvasGpuVram" Margin="0,16,0,14" Background="Transparent" ClipToBounds="True"/>
+                            <Grid VerticalAlignment="Bottom" Margin="2,0,2,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="-60s" Foreground="#6E7681" FontSize="8.5" FontFamily="Consolas"/>
+                                <TextBlock Grid.Column="1" Text="-30s" Foreground="#6E7681" FontSize="8.5" FontFamily="Consolas" TextAlignment="Center"/>
+                                <TextBlock Grid.Column="2" Text="Now" Foreground="#6E7681" FontSize="8.5" FontFamily="Consolas" TextAlignment="Right"/>
+                            </Grid>
+                        </Grid>
+                    </Border>
+                </UniformGrid>
+
+                <!-- Row 2: 6 Genuine Engine Waveform Cards in 2x3 Grid -->
+                <UniformGrid Grid.Row="2" Rows="3" Columns="2" Margin="0,0,0,6">
+                    <!-- 1. 3D Graphics Engine -->
+                    <Border Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="5,4" Margin="0,0,3,2">
+                        <Grid>
+                            <DockPanel VerticalAlignment="Top" Margin="2,0,2,0">
+                                <TextBlock Text="DIRECT3D 3D GRAPHICS" FontWeight="Bold" Foreground="{DynamicResource BrushTextSecondary}" FontSize="9.5"/>
+                                <TextBlock x:Name="TxtGpu3dUtil" Text="0.0%" HorizontalAlignment="Right" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas" FontWeight="Bold" FontSize="9.5"/>
+                            </DockPanel>
+                            <Canvas x:Name="CanvasGpu3d" Margin="0,14,0,2" Background="Transparent" ClipToBounds="True"/>
+                            <Grid VerticalAlignment="Bottom" Margin="2,0,2,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="-60s" Foreground="#6E7681" FontSize="8.5" FontFamily="Consolas"/>
+                                <TextBlock Grid.Column="1" Text="-30s" Foreground="#6E7681" FontSize="8.5" FontFamily="Consolas" TextAlignment="Center"/>
+                                <TextBlock Grid.Column="2" Text="Now" Foreground="#6E7681" FontSize="8.5" FontFamily="Consolas" TextAlignment="Right"/>
+                            </Grid>
+                        </Grid>
+                    </Border>
+
+                    <!-- 2. Compute Engine -->
+                    <Border Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="5,4" Margin="3,0,0,2">
+                        <Grid>
+                            <DockPanel VerticalAlignment="Top" Margin="2,0,2,0">
+                                <TextBlock Text="COMPUTE / GPGPU ENGINE" FontWeight="Bold" Foreground="{DynamicResource BrushTextSecondary}" FontSize="9.5"/>
+                                <TextBlock x:Name="TxtGpuComputeUtil" Text="0.0%" HorizontalAlignment="Right" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas" FontWeight="Bold" FontSize="9.5"/>
+                            </DockPanel>
+                            <Canvas x:Name="CanvasGpuCompute" Margin="0,14,0,2" Background="Transparent" ClipToBounds="True"/>
+                            <Grid VerticalAlignment="Bottom" Margin="2,0,2,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="-60s" Foreground="#6E7681" FontSize="8.5" FontFamily="Consolas"/>
+                                <TextBlock Grid.Column="1" Text="-30s" Foreground="#6E7681" FontSize="8.5" FontFamily="Consolas" TextAlignment="Center"/>
+                                <TextBlock Grid.Column="2" Text="Now" Foreground="#6E7681" FontSize="8.5" FontFamily="Consolas" TextAlignment="Right"/>
+                            </Grid>
+                        </Grid>
+                    </Border>
+
+                    <!-- 3. Video Decoder -->
+                    <Border Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="5,4" Margin="0,2,3,2">
+                        <Grid>
+                            <DockPanel VerticalAlignment="Top" Margin="2,0,2,0">
+                                <TextBlock Text="VIDEO DECODE (NVDEC/VCN)" FontWeight="Bold" Foreground="{DynamicResource BrushTextSecondary}" FontSize="9.5"/>
+                                <TextBlock x:Name="TxtGpuDecoderUtil" Text="0.0%" HorizontalAlignment="Right" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas" FontWeight="Bold" FontSize="9.5"/>
+                            </DockPanel>
+                            <Canvas x:Name="CanvasGpuDecoder" Margin="0,14,0,2" Background="Transparent" ClipToBounds="True"/>
+                            <Grid VerticalAlignment="Bottom" Margin="2,0,2,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="-60s" Foreground="#6E7681" FontSize="8.5" FontFamily="Consolas"/>
+                                <TextBlock Grid.Column="1" Text="-30s" Foreground="#6E7681" FontSize="8.5" FontFamily="Consolas" TextAlignment="Center"/>
+                                <TextBlock Grid.Column="2" Text="Now" Foreground="#6E7681" FontSize="8.5" FontFamily="Consolas" TextAlignment="Right"/>
+                            </Grid>
+                        </Grid>
+                    </Border>
+
+                    <!-- 4. Video Encoder -->
+                    <Border Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="5,4" Margin="3,2,0,2">
+                        <Grid>
+                            <DockPanel VerticalAlignment="Top" Margin="2,0,2,0">
+                                <TextBlock Text="VIDEO ENCODE (NVENC/AMF)" FontWeight="Bold" Foreground="{DynamicResource BrushTextSecondary}" FontSize="9.5"/>
+                                <TextBlock x:Name="TxtGpuEncoderUtil" Text="0.0%" HorizontalAlignment="Right" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas" FontWeight="Bold" FontSize="9.5"/>
+                            </DockPanel>
+                            <Canvas x:Name="CanvasGpuEncoder" Margin="0,14,0,2" Background="Transparent" ClipToBounds="True"/>
+                            <Grid VerticalAlignment="Bottom" Margin="2,0,2,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="-60s" Foreground="#6E7681" FontSize="8.5" FontFamily="Consolas"/>
+                                <TextBlock Grid.Column="1" Text="-30s" Foreground="#6E7681" FontSize="8.5" FontFamily="Consolas" TextAlignment="Center"/>
+                                <TextBlock Grid.Column="2" Text="Now" Foreground="#6E7681" FontSize="8.5" FontFamily="Consolas" TextAlignment="Right"/>
+                            </Grid>
+                        </Grid>
+                    </Border>
+
+                    <!-- 5. DMA / Copy Engine -->
+                    <Border Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="5,4" Margin="0,2,3,0">
+                        <Grid>
+                            <DockPanel VerticalAlignment="Top" Margin="2,0,2,0">
+                                <TextBlock Text="DMA / MEMORY COPY ENGINE" FontWeight="Bold" Foreground="{DynamicResource BrushTextSecondary}" FontSize="9.5"/>
+                                <TextBlock x:Name="TxtGpuCopyUtil" Text="0.0%" HorizontalAlignment="Right" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas" FontWeight="Bold" FontSize="9.5"/>
+                            </DockPanel>
+                            <Canvas x:Name="CanvasGpuCopy" Margin="0,14,0,2" Background="Transparent" ClipToBounds="True"/>
+                            <Grid VerticalAlignment="Bottom" Margin="2,0,2,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="-60s" Foreground="#6E7681" FontSize="8.5" FontFamily="Consolas"/>
+                                <TextBlock Grid.Column="1" Text="-30s" Foreground="#6E7681" FontSize="8.5" FontFamily="Consolas" TextAlignment="Center"/>
+                                <TextBlock Grid.Column="2" Text="Now" Foreground="#6E7681" FontSize="8.5" FontFamily="Consolas" TextAlignment="Right"/>
+                            </Grid>
+                        </Grid>
+                    </Border>
+
+                    <!-- 6. Memory Controller Bus -->
+                    <Border Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="5,4" Margin="3,2,0,0">
+                        <Grid>
+                            <DockPanel VerticalAlignment="Top" Margin="2,0,2,0">
+                                <TextBlock Text="MEMORY CONTROLLER BUS" FontWeight="Bold" Foreground="{DynamicResource BrushTextSecondary}" FontSize="9.5"/>
+                                <TextBlock x:Name="TxtGpuMemCtrlUtil" Text="0.0%" HorizontalAlignment="Right" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas" FontWeight="Bold" FontSize="9.5"/>
+                            </DockPanel>
+                            <Canvas x:Name="CanvasGpuMemCtrl" Margin="0,14,0,2" Background="Transparent" ClipToBounds="True"/>
+                            <Grid VerticalAlignment="Bottom" Margin="2,0,2,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="-60s" Foreground="#6E7681" FontSize="8.5" FontFamily="Consolas"/>
+                                <TextBlock Grid.Column="1" Text="-30s" Foreground="#6E7681" FontSize="8.5" FontFamily="Consolas" TextAlignment="Center"/>
+                                <TextBlock Grid.Column="2" Text="Now" Foreground="#6E7681" FontSize="8.5" FontFamily="Consolas" TextAlignment="Right"/>
+                            </Grid>
+                        </Grid>
+                    </Border>
+                </UniformGrid>
+
+                <!-- Row 3: PCIe Bandwidth & VRAM Allocation Subsystems -->
+                <Grid Grid.Row="3">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- PCIe Bus Throughput -->
+                    <Border Grid.Column="0" Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="8,5" Margin="0,0,3,0">
+                        <DockPanel>
+                            <TextBlock Text="PCIe BUS THROUGHPUT" FontWeight="Bold" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10" VerticalAlignment="Center"/>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                <TextBlock Text="Rx: " Foreground="{DynamicResource BrushTextSecondary}" FontFamily="Consolas" FontSize="10"/>
+                                <TextBlock x:Name="TxtGpuPcieRx" Text="0.0 MB/s" Foreground="{DynamicResource BrushTextPrimary}" FontWeight="Bold" FontFamily="Consolas" FontSize="10" Margin="0,0,12,0"/>
+                                <TextBlock Text="Tx: " Foreground="{DynamicResource BrushTextSecondary}" FontFamily="Consolas" FontSize="10"/>
+                                <TextBlock x:Name="TxtGpuPcieTx" Text="0.0 MB/s" Foreground="{DynamicResource BrushTextPrimary}" FontWeight="Bold" FontFamily="Consolas" FontSize="10"/>
+                            </StackPanel>
+                        </DockPanel>
+                    </Border>
+
+                    <!-- VRAM Pool Status -->
+                    <Border Grid.Column="1" Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="8,5" Margin="3,0,0,0">
+                        <DockPanel>
+                            <TextBlock Text="VRAM ALLOCATION" FontWeight="Bold" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10" VerticalAlignment="Center"/>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                <TextBlock Text="Dedicated: " Foreground="{DynamicResource BrushTextSecondary}" FontFamily="Consolas" FontSize="10"/>
+                                <TextBlock x:Name="TxtGpuVramDetail" Text="0.0 / 8.0 GB" Foreground="{DynamicResource BrushAccentSlate}" FontWeight="Bold" FontFamily="Consolas" FontSize="10" Margin="0,0,12,0"/>
+                                <TextBlock Text="Shared: " Foreground="{DynamicResource BrushTextSecondary}" FontFamily="Consolas" FontSize="10"/>
+                                <TextBlock x:Name="TxtGpuSharedVram" Text="0.0 / 16.0 GB" Foreground="{DynamicResource BrushAccentSlate}" FontWeight="Bold" FontFamily="Consolas" FontSize="10"/>
+                            </StackPanel>
+                        </DockPanel>
+                    </Border>
+                </Grid>
+            </Grid>
+
+            <!-- VIEW 4: MEMORY & VISUAL STORAGE PARTITION BOXES -->
+            <Grid x:Name="ViewMemoryDisks" Visibility="Collapsed">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="1.25*"/>  <!-- Left Column: Graphs & System Memory -->
+                    <ColumnDefinition Width="*"/>      <!-- Right Column: Storage Drives & Partitions -->
+                </Grid.ColumnDefinitions>
+
+                <!-- LEFT COLUMN: SYSTEM MEMORY + ALLOCATION GRAPH + STORAGE I/O GRAPH -->
+                <Grid Grid.Column="0" Margin="0,0,6,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/> <!-- RAM Composition Bar -->
+                        <RowDefinition Height="*"/>    <!-- RAM Usage Graph -->
+                        <RowDefinition Height="*"/>    <!-- Storage I/O Graph -->
+                    </Grid.RowDefinitions>
+
+                    <!-- 1. RAM Composition Bar -->
+                    <Border Grid.Row="0" Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="10" Margin="0,0,0,6">
+                        <StackPanel>
+                            <DockPanel Margin="0,0,0,4">
+                                <TextBlock x:Name="TxtRamHeaderTitle" Text="SYSTEM MEMORY" FontWeight="Bold" Foreground="{DynamicResource BrushTextSecondary}" FontSize="11"/>
+                                <TextBlock x:Name="TxtRamPercentHeader" Text="69.4% Utilized" HorizontalAlignment="Right" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas" FontSize="11"/>
+                            </DockPanel>
+                            <ProgressBar x:Name="BarRamAlloc" Height="12" Background="{DynamicResource BrushCardSunken}" Foreground="{DynamicResource BrushAccentCobalt}" BorderBrush="{DynamicResource BrushCardBorder}" Margin="0,0,0,4"/>
+                            <Grid Margin="0,2,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <TextBlock x:Name="TxtRamUsedDetail" Grid.Row="0" Grid.Column="0" Text="In Use: 22.0 GB" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas" FontSize="10.5"/>
+                                <TextBlock x:Name="TxtRamAvailDetail" Grid.Row="0" Grid.Column="1" Text="Available: 9.7 GB" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas" FontSize="10.5" TextAlignment="Right"/>
+                                <TextBlock x:Name="TxtRamSpeedDetail" Grid.Row="1" Grid.Column="0" Text="Speed: 4800 MT/s" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas" FontSize="10.5" Margin="0,3,0,0"/>
+                                <TextBlock x:Name="TxtRamTotalDetail" Grid.Row="1" Grid.Column="1" Text="Total: 31.7 GB" Foreground="{DynamicResource BrushTextSecondary}" FontFamily="Consolas" FontSize="10.5" TextAlignment="Right" Margin="0,3,0,0"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- 2. Real-Time RAM History Graph -->
+                    <Border Grid.Row="1" Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="6" Margin="0,0,0,6">
+                        <Grid>
+                            <DockPanel VerticalAlignment="Top" Margin="4,0,4,0">
+                                <TextBlock Text="RAM ALLOCATION" FontWeight="Bold" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10"/>
+                                <TextBlock x:Name="TxtRamGraphVitals" Text="In Use: 0.0 GB (0%)" HorizontalAlignment="Right" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas" FontSize="10"/>
+                            </DockPanel>
+                            <Canvas x:Name="CanvasRamGraph" Margin="0,18,0,18" Background="Transparent" ClipToBounds="True"/>
+                            <Grid VerticalAlignment="Bottom" Margin="4,0,4,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="-60s" Foreground="#6E7681" FontSize="9" FontFamily="Consolas"/>
+                                <TextBlock Grid.Column="1" Text="-30s" Foreground="#6E7681" FontSize="9" FontFamily="Consolas" TextAlignment="Center"/>
+                                <TextBlock Grid.Column="2" Text="Now" Foreground="#6E7681" FontSize="9" FontFamily="Consolas" TextAlignment="Right"/>
+                            </Grid>
+                        </Grid>
+                    </Border>
+
+                    <!-- 3. Real-Time Storage Read/Write I/O Throughput Graph -->
+                    <Border Grid.Row="2" Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="6">
+                        <Grid>
+                            <DockPanel VerticalAlignment="Top" Margin="4,0,4,0">
+                                <TextBlock Text="STORAGE I/O" FontWeight="Bold" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10"/>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                    <TextBlock Text="Read: " Foreground="{DynamicResource BrushTextSecondary}" FontSize="10"/>
+                                    <TextBlock x:Name="TxtDiskReadVital" Text="0.0 MB/s" Foreground="{DynamicResource BrushMetricGreen}" FontWeight="Bold" FontFamily="Consolas" FontSize="10" Margin="0,0,10,0"/>
+                                    <TextBlock Text="Write: " Foreground="{DynamicResource BrushTextSecondary}" FontSize="10"/>
+                                    <TextBlock x:Name="TxtDiskWriteVital" Text="0.0 MB/s" Foreground="{DynamicResource BrushMetricRed}" FontWeight="Bold" FontFamily="Consolas" FontSize="10"/>
+                                </StackPanel>
+                            </DockPanel>
+                            <Canvas x:Name="CanvasDiskGraph" Margin="0,18,0,18" Background="Transparent" ClipToBounds="True"/>
+                            <Grid VerticalAlignment="Bottom" Margin="4,0,4,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="-60s" Foreground="#6E7681" FontSize="9" FontFamily="Consolas"/>
+                                <TextBlock Grid.Column="1" Text="-30s" Foreground="#6E7681" FontSize="9" FontFamily="Consolas" TextAlignment="Center"/>
+                                <TextBlock Grid.Column="2" Text="Now" Foreground="#6E7681" FontSize="9" FontFamily="Consolas" TextAlignment="Right"/>
+                            </Grid>
+                        </Grid>
+                    </Border>
+                </Grid>
+
+                <!-- RIGHT COLUMN: STORAGE DRIVES & PARTITIONS -->
+                <Border Grid.Column="1" Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="8">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <DockPanel Grid.Row="0" Margin="2,0,2,8">
+                            <TextBlock Text="STORAGE DRIVES &amp; VOLUMES" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" FontSize="11"/>
+                        </DockPanel>
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                            <StackPanel x:Name="PanelDisksContainer">
+                                <!-- Populated dynamically with rich partition cards -->
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- VIEW 5: POWER & CONTINUOUS BATTERY LEVEL GRAPH -->
+            <Grid x:Name="ViewPower" Visibility="Visible">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/> <!-- Vitals Strip -->
+                    <RowDefinition Height="*"/>    <!-- Total System Power Graph -->
+                    <RowDefinition Height="*"/>    <!-- Continuous Battery Level Timeline Graph -->
+                </Grid.RowDefinitions>
+
+                <Border Grid.Row="0" Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="10" Margin="0,0,0,6">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Border Grid.Column="0" Background="{DynamicResource BrushCardSunken}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="8" Margin="0,0,6,0">
+                            <StackPanel>
+                                <TextBlock Text="PLATFORM TOTAL (PSYS)" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10"/>
+                                <TextBlock x:Name="TxtPowerPsys" Text="0.0 W" FontSize="18" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas"/>
+                                <TextBlock Text="Intel RAPL MSR 0x65F" Foreground="{DynamicResource BrushTextSecondary}" FontSize="9"/>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Column="1" Background="{DynamicResource BrushCardSunken}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="8" Margin="0,0,6,0">
+                            <StackPanel>
+                                <TextBlock Text="CPU PACKAGE POWER" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10"/>
+                                <TextBlock x:Name="TxtPowerCpu" Text="0.0 W" FontSize="18" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas"/>
+                                <TextBlock Text="IA Cores + System Agent" Foreground="{DynamicResource BrushTextSecondary}" FontSize="9"/>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Column="2" Background="{DynamicResource BrushCardSunken}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="8">
+                            <StackPanel>
+                                <TextBlock Text="GPU TOTAL BOARD" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10"/>
+                                <TextBlock x:Name="TxtPowerGpu" Text="0.0 W" FontSize="18" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas"/>
+                                <TextBlock Text="NVIDIA NVML" Foreground="{DynamicResource BrushTextSecondary}" FontSize="9"/>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <!-- Real-Time Total System Power History Graph -->
+                <Border Grid.Row="1" Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="6" Margin="0,0,0,6">
+                    <Grid>
+                        <DockPanel VerticalAlignment="Top" Margin="4,0,4,0">
+                            <TextBlock Text="PLATFORM POWER" FontWeight="Bold" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10"/>
+                            <TextBlock x:Name="TxtPowerGraphVitals" Text="Current: 0.0 W • Peak: 0.0 W" HorizontalAlignment="Right" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas" FontSize="10"/>
+                        </DockPanel>
+                        <Canvas x:Name="CanvasPowerGraph" Margin="0,16,0,16" Background="Transparent" ClipToBounds="True"/>
+                        <Grid VerticalAlignment="Bottom" Margin="4,0,4,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="-60s" Foreground="#6E7681" FontSize="9" FontFamily="Consolas"/>
+                            <TextBlock Grid.Column="1" Text="-30s" Foreground="#6E7681" FontSize="9" FontFamily="Consolas" TextAlignment="Center"/>
+                            <TextBlock Grid.Column="2" Text="Now" Foreground="#6E7681" FontSize="9" FontFamily="Consolas" TextAlignment="Right"/>
+                        </Grid>
+                    </Grid>
+                </Border>
+
+                <!-- CONTINUOUS BATTERY LEVEL TIMELINE GRAPH -->
+                <Border Grid.Row="2" Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="10">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Header & Cycles -->
+                        <DockPanel Grid.Row="0" Margin="0,0,0,6">
+                            <TextBlock Text="BATTERY TIMELINE" FontWeight="Bold" Foreground="{DynamicResource BrushTextSecondary}" FontSize="11"/>
+                            <TextBlock x:Name="TxtCycleStats" Text="Cycles: 14 • Energy Added: 0.0 Wh" HorizontalAlignment="Right" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas" FontSize="11"/>
+                        </DockPanel>
+
+                        <!-- Battery Timeline Canvas with Integrated Precision Y-Axis Grid & Labels -->
+                        <Border Grid.Row="1" Background="{DynamicResource BrushCardSunken}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="4" Margin="0,0,0,8">
+                            <Canvas x:Name="CanvasBatteryTimeline" Background="Transparent" ClipToBounds="True"/>
+                        </Border>
+
+                        <!-- Vitals Bar -->
+                        <Grid Grid.Row="2">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Background="{DynamicResource BrushCardSunken}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="6" Margin="0,0,6,0">
+                                <StackPanel>
+                                    <TextBlock Text="BATTERY STATE" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10"/>
+                                    <TextBlock x:Name="TxtBatteryCharge" Text="75% (AC Connected)" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas"/>
+                                </StackPanel>
+                            </Border>
+                            <Border Grid.Column="1" Background="{DynamicResource BrushCardSunken}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="6" Margin="0,0,6,0">
+                                <StackPanel>
+                                    <TextBlock Text="CHARGE RATE" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10"/>
+                                    <TextBlock x:Name="TxtBatteryRate" Text="0.0 W" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas"/>
+                                </StackPanel>
+                            </Border>
+                            <Border Grid.Column="2" Background="{DynamicResource BrushCardSunken}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="6">
+                                <StackPanel>
+                                    <TextBlock Text="CAPACITY &amp; HEALTH" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10"/>
+                                    <TextBlock Text="60.0 Wh (100% Health)" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas"/>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- VIEW 5: INTERNET & NETWORK INTERFACES -->
+            <Grid x:Name="ViewNetwork" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/> <!-- Top Vitals Ribbon -->
+                    <RowDefinition Height="*"/>    <!-- Split Stage: Graph on Left, Adapters List on Right -->
+                </Grid.RowDefinitions>
+
+                <!-- 1. Top Vitals Strip -->
+                <Border Grid.Row="0" Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="10" Margin="0,0,0,6">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Total Download Speed (Red) -->
+                        <Border Grid.Column="0" Background="{DynamicResource BrushCardSunken}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="8" Margin="0,0,6,0">
+                            <StackPanel>
+                                <TextBlock Text="TOTAL DOWNLOAD (RX)" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10"/>
+                                <TextBlock x:Name="TxtNetDownSpeed" Text="0.0 KB/s" FontSize="18" FontWeight="Bold" Foreground="{DynamicResource BrushMetricRed}" FontFamily="Consolas"/>
+                                <TextBlock x:Name="TxtNetDownStats" Text="Peak: 0.0 MB/s • In: 0.0 GB" Foreground="{DynamicResource BrushTextSecondary}" FontSize="9"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Total Upload Speed (Green) -->
+                        <Border Grid.Column="1" Background="{DynamicResource BrushCardSunken}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="8" Margin="0,0,6,0">
+                            <StackPanel>
+                                <TextBlock Text="TOTAL UPLOAD (TX)" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10"/>
+                                <TextBlock x:Name="TxtNetUpSpeed" Text="0.0 KB/s" FontSize="18" FontWeight="Bold" Foreground="{DynamicResource BrushMetricGreen}" FontFamily="Consolas"/>
+                                <TextBlock x:Name="TxtNetUpStats" Text="Peak: 0.0 MB/s • Out: 0.0 GB" Foreground="{DynamicResource BrushTextSecondary}" FontSize="9"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Primary Network Connection -->
+                        <Border Grid.Column="2" Background="{DynamicResource BrushCardSunken}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="8" Margin="0,0,6,0">
+                            <StackPanel>
+                                <TextBlock Text="PRIMARY CONNECTION" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10"/>
+                                <TextBlock x:Name="TxtActiveNetName" Text="Wi-Fi" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" TextTrimming="CharacterEllipsis"/>
+                                <TextBlock x:Name="TxtActiveNetIp" Text="IPv4: --" Foreground="{DynamicResource BrushTextPrimary}" FontSize="10" FontFamily="Consolas"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Session Data Transferred -->
+                        <Border Grid.Column="3" Background="{DynamicResource BrushCardSunken}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="8">
+                            <StackPanel>
+                                <TextBlock Text="SESSION DATA TRANSFERRED" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10"/>
+                                <TextBlock x:Name="TxtNetDataIn" Text="In: 0.0 GB" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource BrushMetricRed}" FontFamily="Consolas"/>
+                                <TextBlock x:Name="TxtNetDataOut" Text="Out: 0.0 GB" FontSize="10.5" Foreground="{DynamicResource BrushMetricGreen}" FontFamily="Consolas"/>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <!-- 2. Split Stage: Bandwidth History on Left, Network Interface Cards on Right -->
+                <Grid Grid.Row="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="1.25*"/>  <!-- Left: Real-Time Dual-Series Bandwidth Graph & Info -->
+                        <ColumnDefinition Width="*"/>      <!-- Right: Scrollable Network Adapters -->
+                    </Grid.ColumnDefinitions>
+
+                    <!-- LEFT COLUMN: SYSTEM NETWORK BANDWIDTH GRAPH -->
+                    <Grid Grid.Column="0" Margin="0,0,6,0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Real-Time Bandwidth Waveform Graph -->
+                        <Border Grid.Row="0" Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="6" Margin="0,0,0,6">
+                            <Grid>
+                                <DockPanel VerticalAlignment="Top" Margin="4,0,4,0">
+                                    <TextBlock Text="NETWORK BANDWIDTH THROUGHPUT" FontWeight="Bold" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10"/>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <TextBlock Text="Down: " Foreground="{DynamicResource BrushTextSecondary}" FontSize="10"/>
+                                        <TextBlock x:Name="TxtNetGraphDownVital" Text="0.0 KB/s" Foreground="{DynamicResource BrushMetricRed}" FontWeight="Bold" FontFamily="Consolas" FontSize="10" Margin="0,0,10,0"/>
+                                        <TextBlock Text="Up: " Foreground="{DynamicResource BrushTextSecondary}" FontSize="10"/>
+                                        <TextBlock x:Name="TxtNetGraphUpVital" Text="0.0 KB/s" Foreground="{DynamicResource BrushMetricGreen}" FontWeight="Bold" FontFamily="Consolas" FontSize="10"/>
+                                    </StackPanel>
+                                </DockPanel>
+                                <Canvas x:Name="CanvasNetworkGraph" Margin="0,18,0,18" Background="Transparent" ClipToBounds="True"/>
+                                <Grid VerticalAlignment="Bottom" Margin="4,0,4,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="-60s" Foreground="#6E7681" FontSize="9" FontFamily="Consolas"/>
+                                    <TextBlock Grid.Column="1" Text="-30s" Foreground="#6E7681" FontSize="9" FontFamily="Consolas" TextAlignment="Center"/>
+                                    <TextBlock Grid.Column="2" Text="Now" Foreground="#6E7681" FontSize="9" FontFamily="Consolas" TextAlignment="Right"/>
+                                </Grid>
+                            </Grid>
+                        </Border>
+
+                        <!-- Network Protocol Diagnostics Card -->
+                        <Border Grid.Row="1" Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="10">
+                            <StackPanel>
+                                <TextBlock Text="NETWORK INTERFACE SUMMARY" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" FontSize="10.5" Margin="0,0,0,6"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Text="Active Interfaces: " Foreground="{DynamicResource BrushTextSecondary}" FontSize="10"/>
+                                        <TextBlock x:Name="TxtActiveNicCount" Text="0 Active" Foreground="{DynamicResource BrushTextPrimary}" FontWeight="Bold" FontSize="11" FontFamily="Consolas"/>
+                                        <TextBlock Text="Default Gateway: " Foreground="{DynamicResource BrushTextSecondary}" FontSize="10" Margin="0,4,0,0"/>
+                                        <TextBlock x:Name="TxtDefaultGateway" Text="--" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas" FontSize="10.5"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock Text="Total Link Capacity: " Foreground="{DynamicResource BrushTextSecondary}" FontSize="10"/>
+                                        <TextBlock x:Name="TxtTotalLinkSpeed" Text="-- Mbps" Foreground="{DynamicResource BrushTextPrimary}" FontWeight="Bold" FontSize="11" FontFamily="Consolas"/>
+                                        <TextBlock Text="DNS Resolver: " Foreground="{DynamicResource BrushTextSecondary}" FontSize="10" Margin="0,4,0,0"/>
+                                        <TextBlock x:Name="TxtDnsServers" Text="--" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas" FontSize="10.5" TextTrimming="CharacterEllipsis"/>
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                    <!-- RIGHT COLUMN: DYNAMIC LIST OF NETWORK ADAPTER CARDS -->
+                    <Border Grid.Column="1" Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="8">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <DockPanel Grid.Row="0" Margin="2,0,2,8">
+                                <TextBlock Text="ALL NETWORK INTERFACES" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" FontSize="11"/>
+                                <TextBlock x:Name="TxtInterfacesTotalCount" Text="0 Adapters" HorizontalAlignment="Right" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10.5"/>
+                            </DockPanel>
+                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                                <StackPanel x:Name="PanelNetworkAdapters">
+                                    <!-- Populated dynamically with rich interface cards -->
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </Grid>
+
+            <!-- VIEW 6: PROCESSES & TOP APPS -->
+            <Grid x:Name="ViewProcesses" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/> <!-- Top 4 Leaderboard Cards: CPU, GPU, RAM, Net -->
+                    <RowDefinition Height="*"/>    <!-- Full Interactive Process Matrix -->
+                </Grid.RowDefinitions>
+
+                <!-- 1. TOP 4 LEADERBOARD CARDS (TOP 3 PER RESOURCE) -->
+                <Grid Grid.Row="0" Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="8"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="8"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="8"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- CARD 1: TOP 3 CPU CONSUMERS -->
+                    <Border Grid.Column="0" Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" CornerRadius="10" Padding="10,8" Effect="{DynamicResource SkeuoCardShadow}">
+                        <StackPanel>
+                            <DockPanel Margin="0,0,0,6">
+                                <Border Background="{DynamicResource BrushCardSunken}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" CornerRadius="4" Padding="5,1" Margin="0,0,6,0">
+                                    <TextBlock Text="CPU" FontWeight="Bold" FontSize="9" Foreground="{DynamicResource BrushAccentCobalt}"/>
+                                </Border>
+                                <TextBlock Text="TOP 3 CPU LOAD" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" FontSize="10.5" VerticalAlignment="Center"/>
+                            </DockPanel>
+                            <StackPanel x:Name="PanelTopCpu">
+                                <!-- Populated dynamically -->
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- CARD 2: TOP 3 GPU CONSUMERS -->
+                    <Border Grid.Column="2" Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" CornerRadius="10" Padding="10,8" Effect="{DynamicResource SkeuoCardShadow}">
+                        <StackPanel>
+                            <DockPanel Margin="0,0,0,6">
+                                <Border Background="{DynamicResource BrushCardSunken}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" CornerRadius="4" Padding="5,1" Margin="0,0,6,0">
+                                    <TextBlock Text="GPU" FontWeight="Bold" FontSize="9" Foreground="{DynamicResource BrushAccentCobalt}"/>
+                                </Border>
+                                <TextBlock Text="TOP 3 GPU LOAD" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" FontSize="10.5" VerticalAlignment="Center"/>
+                            </DockPanel>
+                            <StackPanel x:Name="PanelTopGpu">
+                                <!-- Populated dynamically -->
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- CARD 3: TOP 3 RAM (WORKING SET) CONSUMERS -->
+                    <Border Grid.Column="4" Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" CornerRadius="10" Padding="10,8" Effect="{DynamicResource SkeuoCardShadow}">
+                        <StackPanel>
+                            <DockPanel Margin="0,0,0,6">
+                                <Border Background="{DynamicResource BrushCardSunken}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" CornerRadius="4" Padding="5,1" Margin="0,0,6,0">
+                                    <TextBlock Text="RAM" FontWeight="Bold" FontSize="9" Foreground="{DynamicResource BrushAccentCobalt}"/>
+                                </Border>
+                                <TextBlock Text="TOP 3 RAM (WORKING SET)" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" FontSize="10.5" VerticalAlignment="Center"/>
+                            </DockPanel>
+                            <StackPanel x:Name="PanelTopRam">
+                                <!-- Populated dynamically -->
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- CARD 4: TOP 3 INTERNET & NETWORK CONSUMERS -->
+                    <Border Grid.Column="6" Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" CornerRadius="10" Padding="10,8" Effect="{DynamicResource SkeuoCardShadow}">
+                        <StackPanel>
+                            <DockPanel Margin="0,0,0,6">
+                                <Border Background="{DynamicResource BrushCardSunken}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" CornerRadius="4" Padding="5,1" Margin="0,0,6,0">
+                                    <TextBlock Text="NET" FontWeight="Bold" FontSize="9" Foreground="{DynamicResource BrushAccentCobalt}"/>
+                                </Border>
+                                <TextBlock Text="BANDWIDTH LEADERS" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" FontSize="10.5" VerticalAlignment="Center"/>
+                            </DockPanel>
+                            <StackPanel x:Name="PanelTopNet">
+                                <!-- Populated dynamically -->
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <!-- 2. FULL LIVE PROCESS MATRIX (SEARCH & SORT) -->
+                <Border Grid.Row="1" Background="{DynamicResource BrushPanelBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" CornerRadius="10" Padding="12,10" Effect="{DynamicResource SkeuoCardShadow}">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/> <!-- Search Box & Process Counter -->
+                            <RowDefinition Height="*"/>    <!-- DataGrid -->
+                        </Grid.RowDefinitions>
+
+                        <!-- Search & Controls Header -->
+                        <DockPanel Grid.Row="0" Margin="0,0,0,8">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="PROCESS OBSERVABILITY MATRIX" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" FontSize="11" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                <TextBlock x:Name="TxtProcessCount" Text="0 Active Processes" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10.5" VerticalAlignment="Center"/>
+                            </StackPanel>
+
+                            <!-- Search Box -->
+                            <Border DockPanel.Dock="Right" HorizontalAlignment="Right" Background="{DynamicResource BrushCardSunken}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" CornerRadius="6" Padding="8,3" Width="260">
+                                <TextBox x:Name="TxtProcessFilter" Text="Filter processes (e.g. chrome, code)..." TextChanged="TxtProcessFilter_TextChanged" GotFocus="TxtProcessFilter_GotFocus" LostFocus="TxtProcessFilter_LostFocus" Background="Transparent" BorderThickness="0" Foreground="{DynamicResource BrushTextPrimary}" FontSize="11" VerticalAlignment="Center"/>
+                            </Border>
+                        </DockPanel>
+
+                        <!-- Live DataGrid -->
+                        <DataGrid Grid.Row="1" x:Name="GridAllProcesses" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" IsReadOnly="True" CanUserResizeColumns="True" CanUserReorderColumns="True" HeadersVisibility="Column" GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="{DynamicResource BrushGridLine}" Background="Transparent" BorderThickness="0" Sorting="GridAllProcesses_Sorting" RowHeight="24" SelectionUnit="FullRow" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                  VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling" ScrollViewer.CanContentScroll="True" EnableRowVirtualization="True">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="PID" Binding="{Binding FormattedPid}" SortMemberPath="Pid" Width="80" MinWidth="45" MaxWidth="120"/>
+                                <DataGridTextColumn Header="PROCESS NAME" Binding="{Binding DisplayName}" SortMemberPath="Name" Width="*" MinWidth="120"/>
+                                <DataGridTextColumn Header="CPU %" Binding="{Binding FormattedCpu}" Width="75" MinWidth="55" MaxWidth="120"/>
+                                <DataGridTextColumn Header="GPU %" Binding="{Binding FormattedGpu}" Width="75" MinWidth="55" MaxWidth="120"/>
+                                <DataGridTextColumn Header="WORKING SET" Binding="{Binding FormattedWorkingSet}" Width="105" MinWidth="75" MaxWidth="160"/>
+                                <DataGridTextColumn Header="PRIVATE RAM" Binding="{Binding FormattedPrivateMemory}" Width="105" MinWidth="75" MaxWidth="160"/>
+                                <DataGridTextColumn Header="NET DOWN" Binding="{Binding FormattedNetDown}" Width="100" MinWidth="75" MaxWidth="160"/>
+                                <DataGridTextColumn Header="NET UP" Binding="{Binding FormattedNetUp}" Width="95" MinWidth="70" MaxWidth="160"/>
+                                <DataGridTextColumn Header="THREADS" Binding="{Binding ThreadCount}" Width="70" MinWidth="50" MaxWidth="100"/>
+                                <DataGridTextColumn Header="STATUS" Binding="{Binding Status}" Width="80" MinWidth="60" MaxWidth="120"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- VIEW 7: TRAY BADGE CONFIG -->
+            <Grid x:Name="ViewTray" Visibility="Collapsed">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="0,0,10,0">
+                        
+                        <!-- Top Active Silicon Detection Cards -->
+                        <Grid Margin="0,0,0,14">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="10"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <!-- CPU Detection Card -->
+                            <Border Grid.Column="0" Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="12" CornerRadius="12">
+                                <StackPanel>
+                                    <TextBlock Text="DETECTED CPU SILICON" FontWeight="Bold" Foreground="{DynamicResource BrushTextSecondary}" FontSize="11" Margin="0,0,0,4"/>
+                                    <TextBlock x:Name="TxtDetectedCpuName" Text="CPU" Foreground="{DynamicResource BrushTextPrimary}" FontWeight="SemiBold" FontSize="13"/>
+                                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0" VerticalAlignment="Center">
+                                        <TextBlock Text="Vendor Architecture: " Foreground="{DynamicResource BrushTextSecondary}" FontSize="11" VerticalAlignment="Center"/>
+                                        <Border x:Name="BrdCpuVendorBadge" Background="#0284C7" CornerRadius="10" Padding="6,2" Margin="4,0,0,0">
+                                            <TextBlock x:Name="TxtCpuVendorLabel" Text="Intel (#0284C7)" Foreground="#FFFFFF" FontWeight="Bold" FontSize="10"/>
+                                        </Border>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- GPU Detection Card -->
+                            <Border Grid.Column="2" Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="12" CornerRadius="12">
+                                <StackPanel>
+                                    <TextBlock Text="DETECTED GPU SILICON" FontWeight="Bold" Foreground="{DynamicResource BrushTextSecondary}" FontSize="11" Margin="0,0,0,4"/>
+                                    <TextBlock x:Name="TxtDetectedGpuName" Text="GPU" Foreground="{DynamicResource BrushTextPrimary}" FontWeight="SemiBold" FontSize="13"/>
+                                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0" VerticalAlignment="Center">
+                                        <TextBlock Text="Vendor Architecture: " Foreground="{DynamicResource BrushTextSecondary}" FontSize="11" VerticalAlignment="Center"/>
+                                        <Border x:Name="BrdGpuVendorBadge" Background="#16A34A" CornerRadius="10" Padding="6,2" Margin="4,0,0,0">
+                                            <TextBlock x:Name="TxtGpuVendorLabel" Text="NVIDIA (#16A34A)" Foreground="#FFFFFF" FontWeight="Bold" FontSize="10"/>
+                                        </Border>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+
+                        <!-- Tray Sensors & Color Customizer Table -->
+                        <Border Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="16" CornerRadius="12" Margin="0,0,0,14">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,10">
+                                    <TextBlock Text="TASKBAR TRAY SENSOR BADGES &amp; PALETTE CUSTOMIZATION" FontWeight="Bold" Foreground="{DynamicResource BrushTextSecondary}" FontSize="11" VerticalAlignment="Center"/>
+                                    <Button x:Name="BtnResetVendorColors" Content="Restore Vendor Defaults" Click="BtnResetVendorColors_Click" 
+                                            HorizontalAlignment="Right" Style="{StaticResource TechButton}" Padding="8,3"/>
+                                </Grid>
+
+                                <!-- Table Header -->
+                                <Grid Background="{DynamicResource BrushCardSunken}" Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="40"/>
+                                        <ColumnDefinition Width="220"/>
+                                        <ColumnDefinition Width="180"/>
+                                        <ColumnDefinition Width="110"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="ON" FontWeight="Bold" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10" Padding="6,4"/>
+                                    <TextBlock Grid.Column="1" Text="TELEMETRY SENSOR" FontWeight="Bold" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10" Padding="6,4"/>
+                                    <TextBlock Grid.Column="2" Text="AUTO VENDOR PALETTE" FontWeight="Bold" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10" Padding="6,4"/>
+                                    <TextBlock Grid.Column="3" Text="HEX COLOR" FontWeight="Bold" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10" Padding="6,4"/>
+                                    <TextBlock Grid.Column="4" Text="PREVIEW" FontWeight="Bold" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10" Padding="6,4"/>
+                                </Grid>
+
+                                <!-- Row 1: CPU Temp -->
+                                <Grid Margin="0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="40"/>
+                                        <ColumnDefinition Width="220"/>
+                                        <ColumnDefinition Width="180"/>
+                                        <ColumnDefinition Width="110"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <CheckBox Grid.Column="0" x:Name="ChkTrayCpuTemp" Click="ChkTray_Changed" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                    <TextBlock Grid.Column="1" Text="CPU Package Temp (°C)" Foreground="{DynamicResource BrushTextPrimary}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="2" x:Name="TxtAutoCpuTemp" Text="Intel Sky Blue (#0284C7)" Foreground="{DynamicResource BrushTextSecondary}" FontSize="11" VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="3" x:Name="TxtHexCpuTemp" Text="#0284C7" TextChanged="TxtHexColor_Changed" Width="85" HorizontalAlignment="Left" Background="#0D1117" Foreground="#FFFFFF" BorderBrush="{DynamicResource BrushCardBorder}" FontFamily="Consolas" Padding="4,2"/>
+                                    <Border Grid.Column="4" x:Name="PvwCpuTemp" Background="#0284C7" Width="28" Height="18" CornerRadius="10" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                                </Grid>
+
+                                <!-- Row 2: GPU Temp -->
+                                <Grid Margin="0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="40"/>
+                                        <ColumnDefinition Width="220"/>
+                                        <ColumnDefinition Width="180"/>
+                                        <ColumnDefinition Width="110"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <CheckBox Grid.Column="0" x:Name="ChkTrayGpuTemp" Click="ChkTray_Changed" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                    <TextBlock Grid.Column="1" Text="GPU Core Temp (°C)" Foreground="{DynamicResource BrushTextPrimary}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="2" x:Name="TxtAutoGpuTemp" Text="NVIDIA Green (#16A34A)" Foreground="{DynamicResource BrushTextSecondary}" FontSize="11" VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="3" x:Name="TxtHexGpuTemp" Text="#16A34A" TextChanged="TxtHexColor_Changed" Width="85" HorizontalAlignment="Left" Background="#0D1117" Foreground="#FFFFFF" BorderBrush="{DynamicResource BrushCardBorder}" FontFamily="Consolas" Padding="4,2"/>
+                                    <Border Grid.Column="4" x:Name="PvwGpuTemp" Background="#16A34A" Width="28" Height="18" CornerRadius="10" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                                </Grid>
+
+                                <!-- Row 3: CPU Power -->
+                                <Grid Margin="0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="40"/>
+                                        <ColumnDefinition Width="220"/>
+                                        <ColumnDefinition Width="180"/>
+                                        <ColumnDefinition Width="110"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <CheckBox Grid.Column="0" x:Name="ChkTrayCpuPower" Click="ChkTray_Changed" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                    <TextBlock Grid.Column="1" Text="CPU Package Power (Watts)" Foreground="{DynamicResource BrushTextPrimary}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="2" x:Name="TxtAutoCpuPower" Text="Intel Royal Blue (#1E40AF)" Foreground="{DynamicResource BrushTextSecondary}" FontSize="11" VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="3" x:Name="TxtHexCpuPower" Text="#1E40AF" TextChanged="TxtHexColor_Changed" Width="85" HorizontalAlignment="Left" Background="#0D1117" Foreground="#FFFFFF" BorderBrush="{DynamicResource BrushCardBorder}" FontFamily="Consolas" Padding="4,2"/>
+                                    <Border Grid.Column="4" x:Name="PvwCpuPower" Background="#1E40AF" Width="28" Height="18" CornerRadius="10" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                                </Grid>
+
+                                <!-- Row 4: GPU Power -->
+                                <Grid Margin="0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="40"/>
+                                        <ColumnDefinition Width="220"/>
+                                        <ColumnDefinition Width="180"/>
+                                        <ColumnDefinition Width="110"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <CheckBox Grid.Column="0" x:Name="ChkTrayGpuPower" Click="ChkTray_Changed" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                    <TextBlock Grid.Column="1" Text="GPU Board Power (Watts)" Foreground="{DynamicResource BrushTextPrimary}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="2" x:Name="TxtAutoGpuPower" Text="NVIDIA Forest (#14532D)" Foreground="{DynamicResource BrushTextSecondary}" FontSize="11" VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="3" x:Name="TxtHexGpuPower" Text="#14532D" TextChanged="TxtHexColor_Changed" Width="85" HorizontalAlignment="Left" Background="#0D1117" Foreground="#FFFFFF" BorderBrush="{DynamicResource BrushCardBorder}" FontFamily="Consolas" Padding="4,2"/>
+                                    <Border Grid.Column="4" x:Name="PvwGpuPower" Background="#14532D" Width="28" Height="18" CornerRadius="10" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                                </Grid>
+
+                                <!-- Row 5: Total System Power -->
+                                <Grid Margin="0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="40"/>
+                                        <ColumnDefinition Width="220"/>
+                                        <ColumnDefinition Width="180"/>
+                                        <ColumnDefinition Width="110"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <CheckBox Grid.Column="0" x:Name="ChkTraySystemPower" Click="ChkTray_Changed" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                    <TextBlock Grid.Column="1" Text="Total System Power (Watts)" Foreground="{DynamicResource BrushTextPrimary}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="2" Text="Dark Slate (#0F172A)" Foreground="{DynamicResource BrushTextSecondary}" FontSize="11" VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="3" x:Name="TxtHexSysPower" Text="#0F172A" TextChanged="TxtHexColor_Changed" Width="85" HorizontalAlignment="Left" Background="#0D1117" Foreground="#FFFFFF" BorderBrush="{DynamicResource BrushCardBorder}" FontFamily="Consolas" Padding="4,2"/>
+                                    <Border Grid.Column="4" x:Name="PvwSysPower" Background="#0F172A" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Width="28" Height="18" CornerRadius="10" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                                </Grid>
+
+                                <!-- Row 6: Battery Remaining -->
+                                <Grid Margin="0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="40"/>
+                                        <ColumnDefinition Width="220"/>
+                                        <ColumnDefinition Width="180"/>
+                                        <ColumnDefinition Width="110"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <CheckBox Grid.Column="0" x:Name="ChkTrayBattery" Click="ChkTray_Changed" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                    <TextBlock Grid.Column="1" Text="Battery % or Runtime Remaining" Foreground="{DynamicResource BrushTextPrimary}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="2" Text="Charcoal / Green AC (#334155)" Foreground="{DynamicResource BrushTextSecondary}" FontSize="11" VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="3" x:Name="TxtHexBattery" Text="#334155" TextChanged="TxtHexColor_Changed" Width="85" HorizontalAlignment="Left" Background="#0D1117" Foreground="#FFFFFF" BorderBrush="{DynamicResource BrushCardBorder}" FontFamily="Consolas" Padding="4,2"/>
+                                    <Border Grid.Column="4" x:Name="PvwBattery" Background="#334155" Width="28" Height="18" CornerRadius="10" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Window & Taskbar Preferences -->
+                        <Border Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="16" CornerRadius="12" Margin="0,0,0,10">
+                            <StackPanel>
+                                <TextBlock Text="WINDOW &amp; TASKBAR BEHAVIOR" FontWeight="Bold" Foreground="{DynamicResource BrushTextSecondary}" FontSize="11" Margin="0,0,0,10"/>
+                                <CheckBox x:Name="ChkCloseToTray" Click="ChkCloseToTray_Click" Content="Close button (X) minimizes to tray" Foreground="{DynamicResource BrushTextPrimary}" Margin="0,0,0,8"/>
+                                <CheckBox x:Name="ChkMinimizeToTray" Click="ChkMinimizeToTray_Click" Content="Minimize button (-) hides to tray" Foreground="{DynamicResource BrushTextPrimary}" Margin="0,0,0,8"/>
+                                <CheckBox x:Name="ChkAlwaysOnTopOption" Click="ChkAlwaysOnTopOption_Click" Content="Always on top" Foreground="{DynamicResource BrushTextPrimary}" Margin="0,0,0,8"/>
+                                <CheckBox x:Name="ChkEnableDebugLog" Click="ChkEnableDebugLog_Click" Content="Enable debug logging (app__debug.log)" Foreground="{DynamicResource BrushTextPrimary}" Margin="0,0,0,14"/>
+
+                                <Button x:Name="BtnSaveTrayConfig" Content="Refresh Taskbar Badges" Click="BtnSaveTrayConfig_Click" Width="180" HorizontalAlignment="Left" 
+                                        Style="{StaticResource TechButton}" Padding="12,6"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Auto-Updater & Version Management -->
+                        <Border Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="16" CornerRadius="12">
+                            <StackPanel>
+                                <TextBlock Text="APPLICATION UPDATES" FontWeight="Bold" Foreground="{DynamicResource BrushTextSecondary}" FontSize="11" Margin="0,0,0,10"/>
+                                <CheckBox x:Name="ChkAutoCheckUpdates" Click="ChkAutoCheckUpdates_Click" Content="Automatically check for updates on startup" IsChecked="True" Foreground="{DynamicResource BrushTextPrimary}" Margin="0,0,0,10"/>
+                                
+                                <DockPanel Margin="0,0,0,8">
+                                    <Button x:Name="BtnCheckUpdatesNow" Content="Check for Updates Now" Click="BtnCheckUpdatesNow_Click" Style="{StaticResource TechButton}" Padding="14,6" Margin="0,0,12,0"/>
+                                    <TextBlock x:Name="TxtUpdateStatus" Text="Clocky v1.0.0 (Release) • Standalone" Foreground="{DynamicResource BrushTextSecondary}" FontSize="11" VerticalAlignment="Center"/>
+                                </DockPanel>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+        </Grid>
+    </Grid>
+
+            <!-- 3. BOTTOM SKEUOMORPHIC STATUS & SHORTCUT LEGEND -->
+            <Border Grid.Row="2" Background="{DynamicResource BrushPanelBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" CornerRadius="10" Padding="14,8" Margin="0,10,0,0" Effect="{DynamicResource SkeuoButtonShadow}">
+                <DockPanel LastChildFill="True">
+                    <!-- Left: Telemetry Engine Diagnostics -->
+                    <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="Clocky v1.0 • PID: " FontSize="10.5" Foreground="{DynamicResource BrushTextSecondary}"/>
+                        <TextBlock x:Name="TxtPid" Text="--" FontSize="10.5" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" Margin="0,0,14,0"/>
+                        <TextBlock Text="Active Sensors: " FontSize="10.5" Foreground="{DynamicResource BrushTextSecondary}"/>
+                        <TextBlock x:Name="TxtSensorsCount" Text="0" FontSize="10.5" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}"/>
+                    </StackPanel>
+
+                    <!-- Right: Polling Timestamp -->
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="Last Polled: " FontSize="10.5" Foreground="{DynamicResource BrushTextSecondary}"/>
+                        <TextBlock x:Name="TxtLastUpdated" Text="--" FontSize="10.5" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}"/>
+                    </StackPanel>
+
+                    <!-- Center: Update Notification Badge (Visible when update is staged) -->
+                    <Border x:Name="BadgeUpdateAvailable" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center" Background="#5865F2" CornerRadius="12" Padding="10,3" Cursor="Hand" MouseLeftButtonDown="BadgeUpdateAvailable_Click">
+                        <TextBlock x:Name="TxtUpdateBadge" Text="Update Available (Click to Restart)" FontSize="10.5" FontWeight="Bold" Foreground="#FFFFFF"/>
+                    </Border>
+                </DockPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

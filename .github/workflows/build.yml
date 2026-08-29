@@ -1,0 +1,26 @@
+name: Build & Test CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Setup .NET 9 SDK
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '9.0.x'
+
+    - name: Restore Dependencies
+      run: dotnet restore src/Clocky/Clocky.csproj
+
+    - name: Build Project (Release)
+      run: dotnet build src/Clocky/Clocky.csproj --configuration Release --no-restore

@@ -1,0 +1,46 @@
+name: Package Standalone Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  release:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Setup .NET 9 SDK
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '9.0.x'
+
+    - name: Publish Standalone Executable
+      run: |
+        dotnet publish src/Clocky/Clocky.csproj `
+          -c Release `
+          -r win-x64 `
+          --self-contained true `
+          -p:PublishSingleFile=true `
+          -p:IncludeNativeLibrariesForSelfExtract=true `
+          -p:EnableCompressionInSingleFile=true `
+          -p:PublishReadyToRun=true `
+          -o dist/
+        $hash = (Get-FileHash -Path "dist/Clocky.exe" -Algorithm SHA256).Hash.ToLower()
+        "$hash  Clocky.exe" | Out-File -FilePath "dist/SHA256SUMS.txt" -Encoding ascii
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          dist/Clocky.exe
+          dist/SHA256SUMS.txt
+          version.json
+        draft: false
+        prerelease: false
+        generate_release_notes: true

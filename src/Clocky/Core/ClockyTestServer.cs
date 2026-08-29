@@ -1,0 +1,300 @@
+using System;
+using System.IO;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
+using System.Text.Json;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using Clocky.Config;
+using Clocky.UI;
+
+namespace Clocky.Core;
+
+public class ClockyTestServer : IDisposable
+{
+    private readonly TcpListener? _listener;
+    private readonly MainWindow _mainWindow;
+    private readonly AppConfig _config;
+    private bool _running;
+    private const int Port = 19842;
+
+    public ClockyTestServer(MainWindow mainWindow, AppConfig config)
+    {
+        _mainWindow = mainWindow;
+        _config = config;
+        try
+        {
+            _listener = new TcpListener(IPAddress.Loopback, Port);
+            _listener.ExclusiveAddressUse = false;
+            _listener.Start();
+            _running = true;
+            Task.Run(ListenLoop);
+        }
+        catch (Exception ex)
+        {
+            try
+            {
+                File.AppendAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "server_err.log"), $"[Server Bind Error] {ex}\n");
+            }
+            catch { }
+        }
+    }
+
+    private async Task ListenLoop()
+    {
+        if (_listener == null) return;
+        while (_running)
+        {
+            try
+            {
+                var client = await _listener.AcceptTcpClientAsync();
+                _ = Task.Run(() => HandleClient(client));
+            }
+            catch
+            {
+                if (!_running) break;
+            }
+        }
+    }
+
+    private void HandleClient(TcpClient client)
+    {
+        using (client)
+        using (var stream = client.GetStream())
+        using (var reader = new StreamReader(stream, Encoding.UTF8))
+        using (var writer = new BinaryWriter(stream))
+        {
+            try
+            {
+                string? reqLine = reader.ReadLine();
+                if (string.IsNullOrEmpty(reqLine)) return;
+
+                var parts = reqLine.Split(' ');
+                if (parts.Length < 2) return;
+
+                string method = parts[0].ToUpperInvariant();
+                string path = parts[1].ToLowerInvariant();
+
+                int contentLength = 0;
+                string? header;
+                while (!string.IsNullOrEmpty(header = reader.ReadLine()))
+                {
+                    if (header.StartsWith("Content-Length:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        int.TryParse(header.Substring("Content-Length:".Length).Trim(), out contentLength);
+                    }
+                }
+
+                string body = "";
+                if (contentLength > 0)
+                {
+                    char[] buffer = new char[contentLength];
+                    int read = reader.ReadBlock(buffer, 0, contentLength);
+                    body = new string(buffer, 0, read);
+                }
+
+                if (path == "/api/status" && method == "GET")
+                {
+                    string json = "";
+                    _mainWindow.Dispatcher.Invoke(() =>
+                    {
+                        var status = new
+                        {
+                            ActiveTab = _mainWindow.CurrentTab,
+                            Theme = _config.ThemePreference,
+                            AlwaysOnTop = _mainWindow.Topmost,
+                            Pid = Environment.ProcessId,
+                            ActiveSensors = _mainWindow.ActiveSensorsCount,
+                            CpuText = _mainWindow.HdrCpuText,
+                            GpuText = _mainWindow.HdrGpuText,
+                            PowerText = _mainWindow.HdrPowerText,
+                            RamText = _mainWindow.HdrRamText
+                        };
+                        json = JsonSerializer.Serialize(status, new JsonSerializerOptions { WriteIndented = true });
+                    });
+
+                    byte[] bodyBytes = Encoding.UTF8.GetBytes(json);
+                    SendHttp(writer, 200, "OK", "application/json", bodyBytes);
+                }
+                else if (path == "/api/snapshot" && method == "GET")
+                {
+                    string json = "";
+                    _mainWindow.Dispatcher.Invoke(() =>
+                    {
+                        var snap = _mainWindow.LatestSnapshot;
+                        json = JsonSerializer.Serialize(snap, new JsonSerializerOptions { WriteIndented = true });
+                    });
+
+                    byte[] bodyBytes = Encoding.UTF8.GetBytes(json);
+                    SendHttp(writer, 200, "OK", "application/json", bodyBytes);
+                }
+                else if (path == "/api/tab" && method == "POST")
+                {
+                    using var doc = JsonDocument.Parse(body);
+                    int tab = doc.RootElement.GetProperty("tab").GetInt32();
+
+                    _mainWindow.Dispatcher.Invoke(() => _mainWindow.SelectTab(tab));
+
+                    byte[] bodyBytes = Encoding.UTF8.GetBytes("{\"status\":\"ok\"}");
+                    SendHttp(writer, 200, "OK", "application/json", bodyBytes);
+                }
+                else if (path.StartsWith("/api/element") && method == "GET")
+                {
+                    string elName = path.Substring("/api/element".Length).TrimStart('/');
+                    if (string.IsNullOrEmpty(elName)) elName = "CanvasCpuLoad";
+
+                    string json = "";
+                    _mainWindow.Dispatcher.Invoke(() =>
+                    {
+                        var r = _mainWindow.GetElementScreenRect(elName);
+                        var obj = new { Name = elName, X = r.X, Y = r.Y, Width = r.Width, Height = r.Height, IsEmpty = r.IsEmpty };
+                        json = JsonSerializer.Serialize(obj);
+                    });
+
+                    byte[] bodyBytes = Encoding.UTF8.GetBytes(json);
+                    SendHttp(writer, 200, "OK", "application/json", bodyBytes);
+                }
+                else if (path == "/api/theme" && method == "POST")
+                {
+                    using var doc = JsonDocument.Parse(body);
+                    string theme = doc.RootElement.GetProperty("theme").GetString() ?? "System";
+
+                    _mainWindow.Dispatcher.Invoke(() =>
+                    {
+                        _config.ThemePreference = theme;
+                        _mainWindow.ApplyTheme(theme);
+                        _config.Save();
+                    });
+
+                    byte[] bodyBytes = Encoding.UTF8.GetBytes("{\"status\":\"ok\"}");
+                    SendHttp(writer, 200, "OK", "application/json", bodyBytes);
+                }
+                else if (path == "/api/test_crash" && method == "POST")
+                {
+                    byte[] bodyBytes = Encoding.UTF8.GetBytes("{\"status\":\"triggering_exception\"}");
+                    SendHttp(writer, 200, "OK", "application/json", bodyBytes);
+                    _mainWindow.Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        throw new InvalidOperationException("Simulated test diagnostic exception triggered by /api/test_crash.");
+                    }));
+                }
+                else if (path == "/api/test_update" && method == "POST")
+                {
+                    using var doc = JsonDocument.Parse(body);
+                    string feed = doc.RootElement.GetProperty("feedUrl").GetString() ?? "";
+                    
+                    _mainWindow.Dispatcher.Invoke(() =>
+                    {
+                        if (!string.IsNullOrEmpty(feed))
+                        {
+                            _config.UpdateFeedUrl = feed;
+                            _config.Save();
+                        }
+                    });
+
+                    byte[] bodyBytes = Encoding.UTF8.GetBytes("{\"status\":\"feed_configured\"}");
+                    SendHttp(writer, 200, "OK", "application/json", bodyBytes);
+                }
+                else if (path == "/api/screenshot" && method == "GET")
+                {
+                    byte[]? pngBytes = null;
+                    _mainWindow.Dispatcher.Invoke(() =>
+                    {
+                        try
+                        {
+                            int width = (int)_mainWindow.ActualWidth;
+                            int height = (int)_mainWindow.ActualHeight;
+                            if (width <= 0 || height <= 0)
+                            {
+                                width = 1420;
+                                height = 890;
+                            }
+
+                            var rtb = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+                            rtb.Render(_mainWindow);
+
+                            var encoder = new PngBitmapEncoder();
+                            encoder.Frames.Add(BitmapFrame.Create(rtb));
+
+                            using var ms = new MemoryStream();
+                            encoder.Save(ms);
+                            pngBytes = ms.ToArray();
+                        }
+                        catch (Exception ex)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"Screenshot error: {ex.Message}");
+                        }
+                    });
+
+                    if (pngBytes != null)
+                    {
+                        SendHttp(writer, 200, "OK", "image/png", pngBytes);
+                    }
+                    else
+                    {
+                        SendHttp(writer, 500, "Internal Error", "text/plain", Encoding.UTF8.GetBytes("Screenshot failed"));
+                    }
+                }
+                else if (path == "/api/exit" && (method == "POST" || method == "GET"))
+                {
+                    byte[] bodyBytes = Encoding.UTF8.GetBytes("{\"status\":\"shutting_down\"}");
+                    SendHttp(writer, 200, "OK", "application/json", bodyBytes);
+                    _mainWindow.Dispatcher.InvokeAsync(async () =>
+                    {
+                        await Task.Delay(200);
+                        System.Windows.Application.Current.Shutdown();
+                    });
+                }
+                else if (path == "/api/toggle" && (method == "POST" || method == "GET"))
+                {
+                    _mainWindow.Dispatcher.Invoke(() =>
+                    {
+                        if (_mainWindow.IsVisible) _mainWindow.Hide();
+                        else
+                        {
+                            _mainWindow.Show();
+                            _mainWindow.WindowState = WindowState.Normal;
+                            _mainWindow.Activate();
+                        }
+                    });
+                    byte[] bodyBytes = Encoding.UTF8.GetBytes("{\"status\":\"ok\"}");
+                    SendHttp(writer, 200, "OK", "application/json", bodyBytes);
+                }
+                else
+                {
+                    SendHttp(writer, 404, "Not Found", "text/plain", Encoding.UTF8.GetBytes("Not Found"));
+                }
+            }
+            catch (Exception ex)
+            {
+                try
+                {
+                    SendHttp(writer, 500, "Internal Server Error", "text/plain", Encoding.UTF8.GetBytes(ex.ToString()));
+                }
+                catch { }
+            }
+        }
+    }
+
+    private static void SendHttp(BinaryWriter writer, int statusCode, string statusText, string contentType, byte[] body)
+    {
+        string header = $"HTTP/1.1 {statusCode} {statusText}\r\n" +
+                        $"Content-Type: {contentType}\r\n" +
+                        $"Content-Length: {body.Length}\r\n" +
+                        $"Access-Control-Allow-Origin: *\r\n" +
+                        $"Connection: close\r\n\r\n";
+        byte[] headerBytes = Encoding.UTF8.GetBytes(header);
+        writer.Write(headerBytes);
+        writer.Write(body);
+        writer.Flush();
+    }
+
+    public void Dispose()
+    {
+        _running = false;
+        try { _listener?.Stop(); } catch { }
+    }
+}

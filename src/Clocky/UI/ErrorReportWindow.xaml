@@ -1,0 +1,143 @@
+<Window x:Class="Clocky.UI.ErrorReportWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Clocky — Error Report"
+        Width="780" Height="560"
+        MinWidth="740" MinHeight="440"
+        WindowStartupLocation="CenterScreen"
+        Background="#1E2124"
+        Foreground="#FFFFFF"
+        FontFamily="Segoe UI"
+        Topmost="True">
+
+    <Window.Resources>
+        <!-- Skeuomorphic & Cyberdeck Button Styles -->
+        <Style x:Key="ErrorPrimaryButton" TargetType="Button">
+            <Setter Property="Background" Value="#7289DA"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Padding" Value="14,8"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="btnBorder" Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="btnBorder" Property="Background" Value="#5B6EAE"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="btnBorder" Property="Background" Value="#4E5D94"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ErrorSecondaryButton" TargetType="Button">
+            <Setter Property="Background" Value="#2F3136"/>
+            <Setter Property="Foreground" Value="#DCDDDE"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="11.5"/>
+            <Setter Property="Padding" Value="12,7"/>
+            <Setter Property="BorderBrush" Value="#424549"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="btnBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="btnBorder" Property="Background" Value="#36393F"/>
+                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="btnBorder" Property="Background" Value="#202225"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/> <!-- Header -->
+            <RowDefinition Height="Auto"/> <!-- Summary Bar -->
+            <RowDefinition Height="*"/>    <!-- Stack Trace & Diagnostics -->
+            <RowDefinition Height="Auto"/> <!-- Log File Path -->
+            <RowDefinition Height="Auto"/> <!-- Action Buttons -->
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <DockPanel Grid.Row="0" Margin="0,0,0,12">
+            <Border Width="40" Height="40" Background="#ED4245" CornerRadius="20" Margin="0,0,14,0" VerticalAlignment="Center">
+                <Path Width="20" Height="20" Stretch="Uniform" Fill="#FFFFFF" 
+                      HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,2"
+                      Data="M12.87,2.51 C12.49,1.86 11.51,1.86 11.13,2.51 L1.26,19.61 C0.88,20.27 1.36,21.1 2.13,21.1 L21.87,21.1 C22.64,21.1 23.12,20.27 22.74,19.61 Z M12,7 C12.55,7 13,7.45 13,8 L13,12 C13,12.55 12.55,13 12,13 C11.45,13 11,12.55 11,12 L11,8 C11,7.45 11.45,7 12,7 Z M12,15 C12.55,15 13,15.45 13,16 C13,16.55 12.55,17 12,17 C11.45,17 11,16.55 11,16 C11,15.45 11.45,15 12,15 Z"/>
+            </Border>
+            <StackPanel VerticalAlignment="Center">
+                <TextBlock Text="Clocky — Unexpected Error" FontSize="18" FontWeight="Bold" Foreground="#FFFFFF"/>
+                <TextBlock Text="An issue occurred during execution. A diagnostic crash report has been generated." FontSize="11.5" Foreground="#B9BBBE" Margin="0,2,0,0"/>
+            </StackPanel>
+        </DockPanel>
+
+        <!-- Summary Bar -->
+        <Border Grid.Row="1" Background="#282B30" BorderBrush="#424549" BorderThickness="1" CornerRadius="6" Padding="12,8" Margin="0,0,0,10">
+            <StackPanel>
+                <DockPanel>
+                    <TextBlock Text="EXCEPTION TYPE:" FontWeight="Bold" FontSize="10.5" Foreground="#7289DA" Margin="0,0,8,0"/>
+                    <TextBlock x:Name="TxtExceptionType" Text="System.Exception" FontSize="11" Foreground="#FFFFFF" FontFamily="Consolas"/>
+                </DockPanel>
+                <DockPanel Margin="0,4,0,0">
+                    <TextBlock Text="MESSAGE:" FontWeight="Bold" FontSize="10.5" Foreground="#7289DA" Margin="0,0,8,0"/>
+                    <TextBlock x:Name="TxtExceptionMessage" Text="Error message text goes here" FontSize="11" Foreground="#FEE75C" TextWrapping="WrapWithOverflow"/>
+                </DockPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- Diagnostics Text Box -->
+        <Border Grid.Row="2" Background="#18191C" BorderBrush="#36393F" BorderThickness="1" CornerRadius="6" Margin="0,0,0,10">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+                <TextBox x:Name="TxtStackTrace" Background="Transparent" Foreground="#DCDDDE" FontFamily="Consolas" FontSize="11" 
+                         BorderThickness="0" Padding="10" IsReadOnly="True" TextWrapping="NoWrap" AcceptsReturn="True"/>
+            </ScrollViewer>
+        </Border>
+
+        <!-- Log File Location -->
+        <DockPanel Grid.Row="3" Margin="0,0,0,14">
+            <TextBlock Text="LOG FILE:" FontWeight="Bold" FontSize="10" Foreground="#72767D" Margin="0,0,6,0" VerticalAlignment="Center"/>
+            <TextBlock x:Name="TxtLogPath" Text="C:\Users\...\AppData\Local\Clocky\Logs\crash.log" FontSize="10" Foreground="#7289DA" FontFamily="Consolas" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+        </DockPanel>
+
+        <!-- Action Buttons (Responsive Non-Overlapping Grid) -->
+        <Grid Grid.Row="4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Left Actions -->
+            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button x:Name="BtnEmailReport" Content="Email Report to Developer" Style="{StaticResource ErrorPrimaryButton}" Margin="0,0,8,0" Click="BtnEmailReport_Click"/>
+                <Button x:Name="BtnCopyClipboard" Content="Copy Diagnostics" Style="{StaticResource ErrorSecondaryButton}" Margin="0,0,8,0" Click="BtnCopyClipboard_Click"/>
+                <Button x:Name="BtnOpenLogsFolder" Content="Open Logs Folder" Style="{StaticResource ErrorSecondaryButton}" Click="BtnOpenLogsFolder_Click"/>
+            </StackPanel>
+
+            <!-- Right Actions -->
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
+                <Button x:Name="BtnRestart" Content="Restart App" Style="{StaticResource ErrorSecondaryButton}" Margin="0,0,8,0" Click="BtnRestart_Click"/>
+                <Button x:Name="BtnClose" Content="Close" Style="{StaticResource ErrorSecondaryButton}" Width="65" Click="BtnClose_Click"/>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>
