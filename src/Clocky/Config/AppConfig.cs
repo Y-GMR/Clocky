@@ -7,6 +7,7 @@ public class AppConfig
 {
     public int PollingIntervalMs { get; set; } = 1000;
     public string ThemePreference { get; set; } = "System";
+    public bool StartWithWindows { get; set; } = false;
     public bool StartMinimized { get; set; } = false;
     public bool AlwaysOnTop { get; set; } = true;
     public bool EnableDebugLog { get; set; } = false;

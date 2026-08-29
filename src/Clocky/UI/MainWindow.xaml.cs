@@ -2304,6 +2304,15 @@ public partial class MainWindow : Window
     private void SyncTrayControls()
     {
         SyncTrayCheckboxes();
+        if (_config != null)
+        {
+            if (ChkStartWithWindows != null) ChkStartWithWindows.IsChecked = StartupHelper.IsStartupEnabled() || _config.StartWithWindows;
+            if (ChkStartMinimized != null) ChkStartMinimized.IsChecked = _config.StartMinimized;
+            if (ChkCloseToTray != null) ChkCloseToTray.IsChecked = _config.CloseToTray;
+            if (ChkMinimizeToTray != null) ChkMinimizeToTray.IsChecked = _config.MinimizeToTray;
+            if (ChkAlwaysOnTopOption != null) ChkAlwaysOnTopOption.IsChecked = _config.AlwaysOnTop;
+            if (ChkEnableDebugLog != null) ChkEnableDebugLog.IsChecked = _config.EnableDebugLog;
+        }
     }
 
     private void SyncTrayCheckboxes()
@@ -2352,6 +2361,27 @@ public partial class MainWindow : Window
 
     private void TxtHexColor_Changed(object sender, TextChangedEventArgs e)
     {
+    }
+
+    private void ChkStartWithWindows_Click(object sender, RoutedEventArgs e)
+    {
+        if (_config == null) return;
+        bool enabled = ChkStartWithWindows?.IsChecked == true;
+        _config.StartWithWindows = enabled;
+        StartupHelper.SetStartup(enabled, _config.StartMinimized);
+        _config.Save();
+    }
+
+    private void ChkStartMinimized_Click(object sender, RoutedEventArgs e)
+    {
+        if (_config == null) return;
+        bool min = ChkStartMinimized?.IsChecked == true;
+        _config.StartMinimized = min;
+        if (_config.StartWithWindows || StartupHelper.IsStartupEnabled())
+        {
+            StartupHelper.SetStartup(true, min);
+        }
+        _config.Save();
     }
 
     private void ChkCloseToTray_Click(object sender, RoutedEventArgs e)

@@ -102,13 +102,23 @@ public partial class App : System.Windows.Application
                 }
             }
 
-            LogDebug("Calling _mainWindow.Show()...");
-            _mainWindow.Show();
-            _mainWindow.WindowState = WindowState.Normal;
-            _mainWindow.Activate();
-            _mainWindow.Focus();
-            _mainWindow.Topmost = _config.AlwaysOnTop;
-            LogDebug($"MainWindow Show called. IsVisible={_mainWindow.IsVisible}, WindowState={_mainWindow.WindowState}");
+            bool isMinimized = _config.StartMinimized || e.Args.Any(a => a.Equals("--minimized", StringComparison.OrdinalIgnoreCase));
+            if (!isMinimized)
+            {
+                LogDebug("Calling _mainWindow.Show()...");
+                _mainWindow.Show();
+                _mainWindow.WindowState = WindowState.Normal;
+                _mainWindow.Activate();
+                _mainWindow.Focus();
+                _mainWindow.Topmost = _config.AlwaysOnTop;
+                LogDebug($"MainWindow Show called. IsVisible={_mainWindow.IsVisible}, WindowState={_mainWindow.WindowState}");
+            }
+            else
+            {
+                LogDebug("Starting in minimized / background tray mode.");
+                _mainWindow.WindowState = WindowState.Minimized;
+                _mainWindow.Hide();
+            }
 
             if (targetTab >= 0)
             {

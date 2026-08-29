@@ -1781,11 +1781,13 @@
                         <!-- Window & Taskbar Preferences -->
                         <Border Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="16" CornerRadius="12" Margin="0,0,0,10">
                             <StackPanel>
-                                <TextBlock Text="WINDOW &amp; TASKBAR BEHAVIOR" FontWeight="Bold" Foreground="{DynamicResource BrushTextSecondary}" FontSize="11" Margin="0,0,0,10"/>
+                                <TextBlock Text="STARTUP &amp; WINDOW BEHAVIOR" FontWeight="Bold" Foreground="{DynamicResource BrushTextSecondary}" FontSize="11" Margin="0,0,0,10"/>
+                                <CheckBox x:Name="ChkStartWithWindows" Click="ChkStartWithWindows_Click" Content="Start Clocky automatically on Windows boot" Foreground="{DynamicResource BrushTextPrimary}" Margin="0,0,0,8"/>
+                                <CheckBox x:Name="ChkStartMinimized" Click="ChkStartMinimized_Click" Content="Start minimized to system tray on launch" Foreground="{DynamicResource BrushTextPrimary}" Margin="0,0,0,8"/>
                                 <CheckBox x:Name="ChkCloseToTray" Click="ChkCloseToTray_Click" Content="Close button (X) minimizes to tray" Foreground="{DynamicResource BrushTextPrimary}" Margin="0,0,0,8"/>
                                 <CheckBox x:Name="ChkMinimizeToTray" Click="ChkMinimizeToTray_Click" Content="Minimize button (-) hides to tray" Foreground="{DynamicResource BrushTextPrimary}" Margin="0,0,0,8"/>
                                 <CheckBox x:Name="ChkAlwaysOnTopOption" Click="ChkAlwaysOnTopOption_Click" Content="Always on top" Foreground="{DynamicResource BrushTextPrimary}" Margin="0,0,0,8"/>
-                                <CheckBox x:Name="ChkEnableDebugLog" Click="ChkEnableDebugLog_Click" Content="Enable debug logging (app__debug.log)" Foreground="{DynamicResource BrushTextPrimary}" Margin="0,0,0,14"/>
+                                <CheckBox x:Name="ChkEnableDebugLog" Click="ChkEnableDebugLog_Click" Content="Enable debug logging (app_debug.log)" Foreground="{DynamicResource BrushTextPrimary}" Margin="0,0,0,14"/>
 
                                 <Button x:Name="BtnSaveTrayConfig" Content="Refresh Taskbar Badges" Click="BtnSaveTrayConfig_Click" Width="180" HorizontalAlignment="Left" 
                                         Style="{StaticResource TechButton}" Padding="12,6"/>
