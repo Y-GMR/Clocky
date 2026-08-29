@@ -1,8 +1,8 @@
 {
-    "version": "1.1.1",
-    "releaseDate": "2026-08-30",
-    "changelog": "Atomic staged update downloads, payload size validation, and automatic PowerShell rollback recovery.",
-    "downloadUrl": "https://github.com/Y-GMR/Clocky/releases/latest/download/Clocky.exe",
-    "mandatory": false,
-    "sha256": "68746699637cb31d633bbbe347e5200d11dfe1579c28f0493f988bfc900b3537"
+  "version": "1.1.1",
+  "releaseDate": "2026-08-30",
+  "changelog": "Atomic staged update downloads, payload size validation, and automatic PowerShell rollback recovery.",
+  "downloadUrl": "https://github.com/Y-GMR/Clocky/releases/latest/download/Clocky.exe",
+  "mandatory": false,
+  "sha256": "c6504867d58fa28742d899e5b3d5f3ca339528a39862487fb42b7541f852f86f"
 }
