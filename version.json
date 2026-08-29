@@ -4,5 +4,5 @@
     "changelog":  "Dynamic hardware labelling, auto-update SHA256 verification, sensor fault isolation, atomic config writes, and dynamic battery health calculation.",
     "downloadUrl":  "https://github.com/Y-GMR/Clocky/releases/latest/download/Clocky.exe",
     "mandatory":  false,
-    "sha256":  "38b3bba4ec25cf283d8c3f18d50cf4d7d6d507256cb308c2bbe43425ee60dd86"
+    "sha256":  "1b42821fe064ed673d1d8b24c42ead67fbea83e89c12b2384d7c97a65a30435a"
 }

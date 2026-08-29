@@ -189,6 +189,7 @@ public partial class MainWindow : Window
 
         SourceInitialized += (s, e) =>
         {
+            ClampToWorkArea();
             UpdateTitleBarTheme(_isDarkTheme);
             var source = (System.Windows.Interop.HwndSource?)PresentationSource.FromVisual(this);
             source?.AddHook(WndProc);
@@ -238,6 +239,30 @@ public partial class MainWindow : Window
             }
         }
         return IntPtr.Zero;
+    }
+
+    private void ClampToWorkArea()
+    {
+        try
+        {
+            var workArea = SystemParameters.WorkArea;
+            double maxAllowedHeight = Math.Max(MinHeight, workArea.Height - 30);
+            double maxAllowedWidth = Math.Max(MinWidth, workArea.Width - 30);
+
+            if (this.Height > maxAllowedHeight)
+            {
+                this.Height = maxAllowedHeight;
+            }
+
+            if (this.Width > maxAllowedWidth)
+            {
+                this.Width = maxAllowedWidth;
+            }
+
+            this.Left = workArea.Left + Math.Max(0, (workArea.Width - this.Width) / 2.0);
+            this.Top = workArea.Top + Math.Max(0, (workArea.Height - this.Height) / 2.0);
+        }
+        catch { }
     }
 
     [DllImport("psapi.dll")]

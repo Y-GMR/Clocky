@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Clocky" 
         Height="890" Width="1420"
-        MinHeight="680" MinWidth="1080"
+        MinHeight="600" MinWidth="960"
         Background="{DynamicResource BrushWindowBg}"
         Foreground="{DynamicResource BrushTextPrimary}"
         FontFamily="'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif"
