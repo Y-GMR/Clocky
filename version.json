@@ -1,8 +1,8 @@
-﻿{
-    "version":  "1.1.3",
-    "releaseDate":  "2026-09-04",
-    "changelog":  "Fixed Windows startup on boot for elevated binary via Task Scheduler, enforced mandatory SHA256 update verification, and hardened test server host validation.",
-    "downloadUrl":  "https://github.com/Y-GMR/Clocky/releases/latest/download/Clocky.exe",
-    "mandatory":  false,
-    "sha256":  "e8d583c2d891e1de52aec1ebfd4447420f43717db89ff12625d186ee5e7b6725"
+{
+  "version": "1.1.3",
+  "releaseDate": "2026-09-04",
+  "changelog": "Fixed Windows startup on boot for elevated binary via Task Scheduler, enforced mandatory SHA256 update verification, and hardened test server host validation.",
+  "downloadUrl": "https://github.com/Y-GMR/Clocky/releases/latest/download/Clocky.exe",
+  "mandatory": false,
+  "sha256": "1ac4ddfc995b5b303317935c5ef4d5d1cdb245ff4a8708988490d20e8c50ccb2"
 }
