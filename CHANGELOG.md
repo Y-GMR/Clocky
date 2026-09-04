@@ -4,6 +4,19 @@ All notable changes to Clocky are documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## [1.1.3] - 2026-09-04
+
+### Security
+- Fixed `ClockyTestServer` Origin and Referer validation by replacing string prefix matching with strict absolute URI host verification (`127.0.0.1`, `localhost`, `[::1]`), preventing lookalike domain bypasses (`localhost.attacker.com`).
+- Enforced mandatory cryptographic SHA256 checksum verification during update downloads, rejecting and deleting binaries if the update manifest omits hash metadata.
+
+### Fixed
+- Fixed Windows startup failure on system restart by migrating from legacy HKCU Run registry keys (which silently suppress elevated binaries) to native elevated Windows Task Scheduler tasks (`HighestAvailable` runlevel on user logon).
+- Hardened auto-updater rollback in `apply_update.ps1` by verifying the replacement executable launches and maintains stability for 3 seconds before discarding backup copies.
+- Added proactive ETW kernel session reclamation in `ProcessTracker` to detect and stop orphaned `ClockyKernelNetTrace` sessions left by prior ungraceful exits.
+
+---
+
 ## [1.1.2] - 2026-08-30
 
 ### Fixed
@@ -25,7 +38,7 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 ## [1.1.0] - 2026-08-30
 
 ### Added
-- Real-time Kernel ETW network packet accounting via `Microsoft.Diagnostics.Tracing.TraceEvent` for precise per-process download and upload telemetry.
+- Real-time Kernel ETW network packet accounting via `Microsoft.Diagnostics.Tracing.TraceEvent` for per-process throughput, combined with native `iphlpapi.dll` table polling for socket counts.
 - 5th top-leaderboard card in Processes & Apps view displaying top network I/O processes with independent upload/download speeds.
 - Test server API endpoints (`/api/table/columns`, `/api/table/resize`, `/api/exit`) for programmatic DataGrid inspection and column resizing.
 

@@ -2422,7 +2422,12 @@ public partial class MainWindow : Window
         SyncTrayCheckboxes();
         if (_config != null)
         {
-            if (ChkStartWithWindows != null) ChkStartWithWindows.IsChecked = StartupHelper.IsStartupEnabled() || _config.StartWithWindows;
+            bool isAutoStart = StartupHelper.IsStartupEnabled() || _config.StartWithWindows;
+            if (ChkStartWithWindows != null) ChkStartWithWindows.IsChecked = isAutoStart;
+            if (isAutoStart)
+            {
+                StartupHelper.SetStartup(true, _config.StartMinimized);
+            }
             if (ChkStartMinimized != null) ChkStartMinimized.IsChecked = _config.StartMinimized;
             if (ChkCloseToTray != null) ChkCloseToTray.IsChecked = _config.CloseToTray;
             if (ChkMinimizeToTray != null) ChkMinimizeToTray.IsChecked = _config.MinimizeToTray;

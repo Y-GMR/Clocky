@@ -127,13 +127,8 @@ public class ClockyTestServer : IDisposable
                     }
                 }
 
-                // Security Check: Block browser-based cross-origin requests
-                if (!string.IsNullOrEmpty(origin) && !origin.StartsWith("http://127.0.0.1", StringComparison.OrdinalIgnoreCase) && !origin.StartsWith("http://localhost", StringComparison.OrdinalIgnoreCase))
-                {
-                    SendHttp(writer, 403, "Forbidden", "text/plain", Encoding.UTF8.GetBytes("Forbidden: Cross-origin browser requests rejected."));
-                    return;
-                }
-                if (!string.IsNullOrEmpty(referer) && !referer.StartsWith("http://127.0.0.1", StringComparison.OrdinalIgnoreCase) && !referer.StartsWith("http://localhost", StringComparison.OrdinalIgnoreCase))
+                // Security Check: Block browser-based cross-origin requests with strict host verification
+                if (!IsLocalOrigin(origin) || !IsLocalOrigin(referer))
                 {
                     SendHttp(writer, 403, "Forbidden", "text/plain", Encoding.UTF8.GetBytes("Forbidden: Cross-origin browser requests rejected."));
                     return;
@@ -410,6 +405,13 @@ public class ClockyTestServer : IDisposable
         writer.Write(headerBytes);
         writer.Write(body);
         writer.Flush();
+    }
+
+    private static bool IsLocalOrigin(string? value)
+    {
+        if (string.IsNullOrEmpty(value)) return true; // Direct non-browser clients omit Origin/Referer
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri)) return false;
+        return uri.Scheme == Uri.UriSchemeHttp && uri.IsLoopback;
     }
 
     public void Dispose()

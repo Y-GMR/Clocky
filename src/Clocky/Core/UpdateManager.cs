@@ -164,17 +164,27 @@ public static class UpdateManager
                 }
             }
 
-            // Cryptographic Hash Verification: Reject corrupted or tampered binaries
-            if (!string.IsNullOrWhiteSpace(expectedSha256))
+            // Cryptographic Hash Verification: Mandatory SHA256 validation
+            if (string.IsNullOrWhiteSpace(expectedSha256))
             {
-                using var sha = System.Security.Cryptography.SHA256.Create();
-                using var verifyStream = File.OpenRead(tempFile);
-                byte[] hashBytes = await sha.ComputeHashAsync(verifyStream);
-                string actualHash = Convert.ToHexString(hashBytes).ToLowerInvariant();
-                if (!string.Equals(actualHash, expectedSha256.Trim().ToLowerInvariant(), StringComparison.OrdinalIgnoreCase))
+                if (File.Exists(tempFile))
                 {
-                    throw new InvalidOperationException($"Update binary verification failed. Expected SHA256: {expectedSha256}, Actual: {actualHash}. Installation rejected.");
+                    try { File.Delete(tempFile); } catch { }
                 }
+                throw new InvalidOperationException("Update manifest did not include a SHA256 hash - refusing to install an unverified binary.");
+            }
+
+            using var sha = System.Security.Cryptography.SHA256.Create();
+            using var verifyStream = File.OpenRead(tempFile);
+            byte[] hashBytes = await sha.ComputeHashAsync(verifyStream);
+            string actualHash = Convert.ToHexString(hashBytes).ToLowerInvariant();
+            if (!string.Equals(actualHash, expectedSha256.Trim().ToLowerInvariant(), StringComparison.OrdinalIgnoreCase))
+            {
+                if (File.Exists(tempFile))
+                {
+                    try { File.Delete(tempFile); } catch { }
+                }
+                throw new InvalidOperationException($"Update binary verification failed. Expected SHA256: {expectedSha256}, Actual: {actualHash}. Installation rejected.");
             }
 
             // Atomic promotion to final update file
@@ -277,20 +287,40 @@ if (Test-Path -LiteralPath $src) {{
             if (Test-Path -LiteralPath $bak) {{
                 try {{
                     Copy-Item -LiteralPath $bak -Destination $dst -Force
+                    Start-Process -FilePath $dst
                 }} catch {{}}
             }}
         }} else {{
-            # Success: clean up temporary backup copy
-            try {{
-                Remove-Item -LiteralPath $bak -Force -ErrorAction SilentlyContinue
-            }} catch {{}}
+            # 4. Launch new executable and verify startup stability
+            $launched = $false
+            if (Test-Path -LiteralPath $dst) {{
+                try {{
+                    $newProc = Start-Process -FilePath $dst -PassThru -ErrorAction Stop
+                    if ($newProc -and -not $newProc.HasExited) {{
+                        Start-Sleep -Seconds 3
+                        if (-not $newProc.HasExited) {{
+                            $launched = $true
+                        }}
+                    }}
+                }} catch {{}}
+            }}
+
+            # 5. If new process failed or crashed immediately, rollback to backup
+            if (-not $launched) {{
+                if (Test-Path -LiteralPath $bak) {{
+                    try {{
+                        Copy-Item -LiteralPath $bak -Destination $dst -Force
+                        Start-Process -FilePath $dst
+                    }} catch {{}}
+                }}
+            }} else {{
+                # New binary is running healthy: safely remove rollback backup
+                try {{
+                    Remove-Item -LiteralPath $bak -Force -ErrorAction SilentlyContinue
+                }} catch {{}}
+            }}
         }}
     }}
-}}
-
-# 4. Restart Clocky
-if (Test-Path -LiteralPath $dst) {{
-    Start-Process -FilePath $dst
 }}
 ";
 

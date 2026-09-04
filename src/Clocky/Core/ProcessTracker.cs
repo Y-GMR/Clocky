@@ -57,7 +57,19 @@ public class ProcessTracker : IDisposable
         {
             if (TraceEventSession.IsElevated() == true)
             {
-                _etwSession = new TraceEventSession("ClockyKernelNetTrace");
+                const string sessionName = "ClockyKernelNetTrace";
+                try
+                {
+                    var existingSession = TraceEventSession.GetActiveSession(sessionName);
+                    if (existingSession != null)
+                    {
+                        existingSession.Stop(true);
+                        existingSession.Dispose();
+                    }
+                }
+                catch { }
+
+                _etwSession = new TraceEventSession(sessionName);
                 _etwSession.EnableKernelProvider(KernelTraceEventParser.Keywords.NetworkTCPIP);
 
                 _etwSession.Source.Kernel.TcpIpRecv += data =>
