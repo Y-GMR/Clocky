@@ -70,8 +70,8 @@ Snapshot references are replaced atomically on the UI thread without re-allocati
 
 ### Hybrid CPU Topology Mapping
 - CPU core topology is resolved dynamically on initialization:
-  - **Intel Hybrid**: Detects heterogenous core configurations via APIC IDs and divides cores into Performance Core (`GridPCores`) and Efficiency Core (`GridECores`) matrices.
-  - **AMD Ryzen / Uniform**: Dynamically sizes multi-die CCX/CCD thread grids based on total logical thread count.
+  - **Heterogeneous / Hybrid Intel**: Directly queries the Windows NT kernel scheduler via Win32 `GetLogicalProcessorInformationEx` (`RelationProcessorCore`) in `CpuTopologyHelper`, extracting physical core records, `EfficiencyClass` (0 = E-core, 1+ = P-core), SMT flags, and processor affinity bitmasks. Caches hybrid layouts into Performance Core (`GridPCores`) and Efficiency Core (`GridECores`) matrices without heuristic thread-count thresholds or SKU string matching.
+  - **AMD Ryzen / Uniform**: Dynamically sizes multi-die CCX/CCD thread grids based on kernel physical core and logical thread topology.
 
 ---
 
@@ -89,7 +89,7 @@ Clocky implements a native Win32 `ClockyTrayIcon` wrapper:
 
 ## 6. Process & Bandwidth Attribution Engine
 
-- **ProcessTracker**: Samples top CPU, GPU (3D and dedicated VRAM engines), and RAM consumers, while tracking Disk I/O bytes via `NtQuerySystemInformation`.
+- **ProcessTracker**: Samples top CPU, GPU (3D and dedicated VRAM engines), and RAM consumers, while tracking Disk I/O bytes via `NtQuerySystemInformation`. State dictionaries are keyed by composite `(int Pid, long CreateTime)` tuples extracted directly from `SYSTEM_PROCESS_INFORMATION.CreateTime`, preventing counter corruption across rapid Windows PID recycling. Unoccupied leaderboard slots collapse cleanly without artificial RAM padding.
 - **Kernel ETW Network Bandwidth Accounting**: Hooks `Microsoft-Windows-TCPIP` (`NetworkTCPIP`) ETW kernel trace events in real time to capture exact per-PID download and upload throughput deltas. Proactively reclaims any orphaned sessions on startup.
 - **Native Socket State Polling**: Employs `iphlpapi.dll` (`GetExtendedTcpTable` / `GetExtendedUdpTable`) for point-in-time socket table enumeration to track active and established socket connection counts per PID.
 

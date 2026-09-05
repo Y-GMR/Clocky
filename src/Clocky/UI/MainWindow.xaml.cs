@@ -484,12 +484,7 @@ public partial class MainWindow : Window
         _lastConfiguredCpuName = cpuName;
         _lastConfiguredThreadCount = threadCount;
 
-        bool hasExplicitECores = snap?.CpuCores?.Any(c => c.CoreType == "E-Core") == true;
-        bool isIntelHybrid = hasExplicitECores || (cpuName.Contains("Core", StringComparison.OrdinalIgnoreCase) && 
-            (cpuName.Contains("12th", StringComparison.OrdinalIgnoreCase) || 
-             cpuName.Contains("13th", StringComparison.OrdinalIgnoreCase) || 
-             cpuName.Contains("14th", StringComparison.OrdinalIgnoreCase) || 
-             cpuName.Contains("Ultra", StringComparison.OrdinalIgnoreCase)) && threadCount > 8);
+        bool isHeterogeneous = snap?.CpuCores?.Any(c => c.CoreType == "E-Core") == true;
 
         MediaColor cellBg = _isDarkTheme ? DiscordDarkPanel : LightSunken;
         MediaColor cellBorder = _isDarkTheme ? DiscordDarkBorder : LightBorder;
@@ -508,17 +503,11 @@ public partial class MainWindow : Window
         _eCoreValueLabels.Clear();
         _eCoreHistories.Clear();
 
-        if (isIntelHybrid)
+        if (isHeterogeneous)
         {
-            // Hybrid Intel: Separate P-Core and E-Core sections
+            // Heterogeneous CPU: Separate P-Core and E-Core sections
             int pThreadCount = snap?.CpuCores?.Count(c => c.CoreType == "P-Core") ?? 0;
             int eCoreCount = snap?.CpuCores?.Count(c => c.CoreType == "E-Core") ?? 0;
-
-            if (pThreadCount <= 0 || eCoreCount <= 0)
-            {
-                pThreadCount = (threadCount >= 24) ? 16 : (threadCount >= 16 ? 12 : 8);
-                eCoreCount = Math.Max(0, threadCount - pThreadCount);
-            }
 
             if (HdrPCores != null)
             {
@@ -1357,7 +1346,7 @@ public partial class MainWindow : Window
 
         for (int i = 0; i < _pCoreHistories.Count; i++)
         {
-            float tLoad = (i < snap.CpuCores.Count) ? snap.CpuCores[i].Load : snap.CpuTotalUtil;
+            float tLoad = (i < snap.CpuCores.Count) ? snap.CpuCores[i].Load : 0f;
             PushHistory(_pCoreHistories[i], tLoad);
         }
 
@@ -1448,10 +1437,15 @@ public partial class MainWindow : Window
             if (CpuPkgTempText != null) CpuPkgTempText.Text = snap.CpuPackageTemp > 0 ? $"{snap.CpuPackageTemp:F1} °C" : "— °C";
             if (CpuPkgPowerText != null) CpuPkgPowerText.Text = snap.CpuPackagePower > 0 ? $"{snap.CpuPackagePower:F1} W" : "— W";
 
-            float curAvgClock = snap.CpuCores.Count > 0 ? snap.CpuCores.Average(c => c.Clock) : snap.CpuMaxFrequency;
+            var coresWithClock = snap.CpuCores.Where(c => c.Clock > 0).ToList();
+            float curAvgClock = coresWithClock.Count > 0 ? coresWithClock.Average(c => c.Clock) : snap.CpuMaxFrequency;
             if (CpuMaxFreqText != null) CpuMaxFreqText.Text = $"{curAvgClock:F0} / {snap.CpuMaxFrequency:F0} MHz";
             if (CpuTotalLoadText != null) CpuTotalLoadText.Text = $"{snap.CpuTotalUtil:F1} %";
-            if (CpuVidText != null) CpuVidText.Text = snap.CpuVoltage > 0 ? $"{snap.CpuVoltage:F3} V" : "— V";
+            if (CpuVidText != null)
+            {
+                string voltLabel = snap.CpuVoltageIsVid ? "" : "Vcore ";
+                CpuVidText.Text = snap.CpuVoltage > 0 ? $"{voltLabel}{snap.CpuVoltage:F3} V" : "— V";
+            }
 
             if (TxtCpuLoadVital != null) TxtCpuLoadVital.Text = $"{snap.CpuTotalUtil:F1}%";
             if (TxtCpuTempVital != null) TxtCpuTempVital.Text = snap.CpuPackageTemp > 0 ? $"{snap.CpuPackageTemp:F1}°C" : "—°C";
@@ -1465,8 +1459,10 @@ public partial class MainWindow : Window
 
             for (int i = 0; i < _pCoreCanvases.Count; i++)
             {
-                float clk = i < snap.CpuCores.Count && snap.CpuCores[i].Clock > 0 ? snap.CpuCores[i].Clock : snap.CpuMaxFrequency;
-                _pCoreClockLabels[i].Text = $"{(clk / 1000f):F1} GHz";
+                if (i < snap.CpuCores.Count && snap.CpuCores[i].Clock > 0)
+                    _pCoreClockLabels[i].Text = $"{(snap.CpuCores[i].Clock / 1000f):F1} GHz";
+                else
+                    _pCoreClockLabels[i].Text = "— GHz";
 
                 float curLoad = _pCoreHistories[i].Count > 0 ? _pCoreHistories[i].Last() : 0f;
                 float avgLoad = _pCoreHistories[i].Count > 0 ? _pCoreHistories[i].Average() : 0f;
@@ -1478,8 +1474,10 @@ public partial class MainWindow : Window
             for (int i = 0; i < _eCoreCanvases.Count; i++)
             {
                 int eThreadIdx = _pCoreCanvases.Count + i;
-                float clk = eThreadIdx < snap.CpuCores.Count && snap.CpuCores[eThreadIdx].Clock > 0 ? snap.CpuCores[eThreadIdx].Clock : snap.CpuMaxFrequency;
-                _eCoreClockLabels[i].Text = $"{(clk / 1000f):F1} GHz";
+                if (eThreadIdx < snap.CpuCores.Count && snap.CpuCores[eThreadIdx].Clock > 0)
+                    _eCoreClockLabels[i].Text = $"{(snap.CpuCores[eThreadIdx].Clock / 1000f):F1} GHz";
+                else
+                    _eCoreClockLabels[i].Text = "— GHz";
 
                 float curLoad = _eCoreHistories[i].Count > 0 ? _eCoreHistories[i].Last() : 0f;
                 float avgLoad = _eCoreHistories[i].Count > 0 ? _eCoreHistories[i].Average() : 0f;

@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading;
 using LibreHardwareMonitor.Hardware;
 
 namespace Clocky.Core;
@@ -155,7 +156,7 @@ public class HardwareEngine : IDisposable
     private readonly Computer _computer;
     private readonly UpdateVisitor _visitor;
     private readonly System.Timers.Timer _timer;
-    private bool _isUpdating;
+    private int _isUpdating;
     private readonly Dictionary<string, SensorRecord> _sensorHistory = new();
 
     public event Action<TelemetrySnapshot>? TelemetryUpdated;
@@ -230,8 +231,7 @@ public class HardwareEngine : IDisposable
 
     public void Poll()
     {
-        if (_isUpdating) return;
-        _isUpdating = true;
+        if (Interlocked.Exchange(ref _isUpdating, 1) == 1) return;
 
         try
         {
@@ -254,7 +254,7 @@ public class HardwareEngine : IDisposable
         }
         finally
         {
-            _isUpdating = false;
+            Interlocked.Exchange(ref _isUpdating, 0);
         }
     }
 
@@ -284,17 +284,10 @@ public class HardwareEngine : IDisposable
                 var coreTemps = new Dictionary<int, float>();
                 var coreClocks = new Dictionary<int, float>();
 
-                int totalThreads = Environment.ProcessorCount;
-                bool isHybridIntel = cpu.Sensors.Any(s => s.Name.StartsWith("P-Core", StringComparison.OrdinalIgnoreCase)) ||
-                                    (snap.CpuName.Contains("Intel", StringComparison.OrdinalIgnoreCase) && 
-                                    (snap.CpuName.Contains("12th", StringComparison.OrdinalIgnoreCase) || 
-                                     snap.CpuName.Contains("13th", StringComparison.OrdinalIgnoreCase) || 
-                                     snap.CpuName.Contains("14th", StringComparison.OrdinalIgnoreCase) || 
-                                     snap.CpuName.Contains("Ultra", StringComparison.OrdinalIgnoreCase)) && totalThreads > 8);
-
-                int pCoreCount = isHybridIntel ? (totalThreads >= 24 ? 8 : (totalThreads >= 16 ? 6 : 4)) : totalThreads;
-                int pThreadThreshold = isHybridIntel ? pCoreCount * 2 : totalThreads;
-                int eCoreCount = isHybridIntel ? totalThreads - pThreadThreshold : 0;
+                var topology = CpuTopologyHelper.GetTopology();
+                int totalThreads = topology.LogicalProcessorCount;
+                var pCores = topology.Cores.Where(c => c.CoreType == "P-Core").ToList();
+                var eCores = topology.Cores.Where(c => c.CoreType == "E-Core").ToList();
 
                 foreach (var sensor in cpu.Sensors)
                 {
@@ -309,20 +302,58 @@ public class HardwareEngine : IDisposable
                                 snap.CpuTotalUtil = val;
                             else
                             {
+                                var matchPE = System.Text.RegularExpressions.Regex.Match(sensor.Name, @"(P|E)-Core #(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
                                 var matchThread = System.Text.RegularExpressions.Regex.Match(sensor.Name, @"CPU Core #(\d+)\s+Thread #(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
                                 var matchCore = System.Text.RegularExpressions.Regex.Match(sensor.Name, @"CPU Core #(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-                                if (matchThread.Success)
+
+                                if (matchPE.Success)
+                                {
+                                    bool isP = matchPE.Groups[1].Value.Equals("P", StringComparison.OrdinalIgnoreCase);
+                                    int num = int.Parse(matchPE.Groups[2].Value);
+                                    var targetList = isP ? pCores : eCores;
+                                    if (num >= 1 && num <= targetList.Count)
+                                    {
+                                        var core = targetList[num - 1];
+                                        foreach (int th in core.LogicalProcessorIndices)
+                                        {
+                                            if (th >= 0 && th < totalThreads) coreLoads[th] = val;
+                                        }
+                                    }
+                                }
+                                else if (matchThread.Success)
                                 {
                                     int c = int.Parse(matchThread.Groups[1].Value);
                                     int t = int.Parse(matchThread.Groups[2].Value);
-                                    int thIdx = (c - 1) * 2 + (t - 1);
-                                    if (thIdx >= 0 && thIdx < totalThreads) coreLoads[thIdx] = val;
+                                    if (c >= 1 && c <= topology.Cores.Count)
+                                    {
+                                        var core = topology.Cores[c - 1];
+                                        if (t - 1 >= 0 && t - 1 < core.LogicalProcessorIndices.Count)
+                                        {
+                                            int th = core.LogicalProcessorIndices[t - 1];
+                                            if (th >= 0 && th < totalThreads) coreLoads[th] = val;
+                                        }
+                                    }
+                                    else
+                                    {
+                                        int thIdx = (c - 1) * 2 + (t - 1);
+                                        if (thIdx >= 0 && thIdx < totalThreads) coreLoads[thIdx] = val;
+                                    }
                                 }
                                 else if (matchCore.Success)
                                 {
                                     int c = int.Parse(matchCore.Groups[1].Value);
-                                    int thIdx = (isHybridIntel && c > pCoreCount) ? pThreadThreshold + (c - 1 - pCoreCount) : (c - 1);
-                                    if (thIdx >= 0 && thIdx < totalThreads) coreLoads[thIdx] = val;
+                                    if (c >= 1 && c <= topology.Cores.Count)
+                                    {
+                                        var core = topology.Cores[c - 1];
+                                        foreach (int th in core.LogicalProcessorIndices)
+                                        {
+                                            if (th >= 0 && th < totalThreads) coreLoads[th] = val;
+                                        }
+                                    }
+                                    else if (c - 1 >= 0 && c - 1 < totalThreads)
+                                    {
+                                        coreLoads[c - 1] = val;
+                                    }
                                 }
                             }
                             break;
@@ -352,21 +383,35 @@ public class HardwareEngine : IDisposable
                             else
                             {
                                 var matchPE = System.Text.RegularExpressions.Regex.Match(sensor.Name, @"(P|E)-Core #(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                                var matchCore = System.Text.RegularExpressions.Regex.Match(sensor.Name, @"CPU Core #(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
                                 if (matchPE.Success)
                                 {
                                     bool isP = matchPE.Groups[1].Value.Equals("P", StringComparison.OrdinalIgnoreCase);
                                     int num = int.Parse(matchPE.Groups[2].Value);
-                                    if (isP && num >= 1 && num <= pCoreCount)
+                                    var targetList = isP ? pCores : eCores;
+                                    if (num >= 1 && num <= targetList.Count)
                                     {
-                                        int t1 = (num - 1) * 2;
-                                        int t2 = t1 + 1;
-                                        if (t1 < totalThreads) coreTemps[t1] = val;
-                                        if (t2 < totalThreads) coreTemps[t2] = val;
+                                        var core = targetList[num - 1];
+                                        foreach (int th in core.LogicalProcessorIndices)
+                                        {
+                                            if (th >= 0 && th < totalThreads) coreTemps[th] = val;
+                                        }
                                     }
-                                    else if (!isP && num >= 1 && num <= eCoreCount)
+                                }
+                                else if (matchCore.Success)
+                                {
+                                    int c = int.Parse(matchCore.Groups[1].Value);
+                                    if (c >= 1 && c <= topology.Cores.Count)
                                     {
-                                        int t = pThreadThreshold + (num - 1);
-                                        if (t < totalThreads) coreTemps[t] = val;
+                                        var core = topology.Cores[c - 1];
+                                        foreach (int th in core.LogicalProcessorIndices)
+                                        {
+                                            if (th >= 0 && th < totalThreads) coreTemps[th] = val;
+                                        }
+                                    }
+                                    else if (c - 1 >= 0 && c - 1 < totalThreads)
+                                    {
+                                        coreTemps[c - 1] = val;
                                     }
                                 }
                             }
@@ -395,24 +440,31 @@ public class HardwareEngine : IDisposable
                                 {
                                     bool isP = matchPE.Groups[1].Value.Equals("P", StringComparison.OrdinalIgnoreCase);
                                     int num = int.Parse(matchPE.Groups[2].Value);
-                                    if (isP && num >= 1 && num <= pCoreCount)
+                                    var targetList = isP ? pCores : eCores;
+                                    if (num >= 1 && num <= targetList.Count)
                                     {
-                                        int t1 = (num - 1) * 2;
-                                        int t2 = t1 + 1;
-                                        if (t1 < totalThreads) coreClocks[t1] = val;
-                                        if (t2 < totalThreads) coreClocks[t2] = val;
-                                    }
-                                    else if (!isP && num >= 1 && num <= eCoreCount)
-                                    {
-                                        int t = pThreadThreshold + (num - 1);
-                                        if (t < totalThreads) coreClocks[t] = val;
+                                        var core = targetList[num - 1];
+                                        foreach (int th in core.LogicalProcessorIndices)
+                                        {
+                                            if (th >= 0 && th < totalThreads) coreClocks[th] = val;
+                                        }
                                     }
                                 }
                                 else if (matchCore.Success)
                                 {
                                     int c = int.Parse(matchCore.Groups[1].Value);
-                                    int thIdx = (isHybridIntel && c > pCoreCount) ? pThreadThreshold + (c - 1 - pCoreCount) : (c - 1);
-                                    if (thIdx >= 0 && thIdx < totalThreads) coreClocks[thIdx] = val;
+                                    if (c >= 1 && c <= topology.Cores.Count)
+                                    {
+                                        var core = topology.Cores[c - 1];
+                                        foreach (int th in core.LogicalProcessorIndices)
+                                        {
+                                            if (th >= 0 && th < totalThreads) coreClocks[th] = val;
+                                        }
+                                    }
+                                    else if (c - 1 >= 0 && c - 1 < totalThreads)
+                                    {
+                                        coreClocks[c - 1] = val;
+                                    }
                                 }
                                 if (val > snap.CpuMaxFrequency) snap.CpuMaxFrequency = val;
                             }
@@ -422,7 +474,10 @@ public class HardwareEngine : IDisposable
                             if (val > 0)
                             {
                                 if (snap.CpuVoltage == 0 || sensor.Name.Contains("VID", StringComparison.OrdinalIgnoreCase) || sensor.Name.Contains("Core", StringComparison.OrdinalIgnoreCase))
+                                {
                                     snap.CpuVoltage = val;
+                                    snap.CpuVoltageIsVid = sensor.Name.Contains("VID", StringComparison.OrdinalIgnoreCase) || !sensor.Name.Contains("Vcore", StringComparison.OrdinalIgnoreCase);
+                                }
                             }
                             break;
                     }
@@ -486,6 +541,7 @@ public class HardwareEngine : IDisposable
                             if (s.Name.Contains("CPU", StringComparison.OrdinalIgnoreCase) || s.Name.Contains("Vcore", StringComparison.OrdinalIgnoreCase))
                             {
                                 snap.CpuVoltage = s.Value.GetValueOrDefault();
+                                snap.CpuVoltageIsVid = false;
                                 break;
                             }
                         }
@@ -496,18 +552,19 @@ public class HardwareEngine : IDisposable
                 for (int i = 0; i < totalThreads; i++)
                 {
                     string coreType = "Core";
-                    if (isHybridIntel)
-                        coreType = (i < pThreadThreshold) ? "P-Core" : "E-Core";
+                    if (topology.ThreadToCoreMap.TryGetValue(i, out var coreInfo))
+                        coreType = coreInfo.CoreType;
                     else if (snap.CpuName.Contains("Ryzen", StringComparison.OrdinalIgnoreCase) || snap.CpuName.Contains("AMD", StringComparison.OrdinalIgnoreCase))
                         coreType = "Zen Core";
 
+                    // Zero Synthetic Fallbacks: Missing individual sensors are set to 0f (rendered as — or N/A).
                     snap.CpuCores.Add(new CoreTelemetry
                     {
                         Index = i + 1,
                         CoreType = coreType,
-                        Load = coreLoads.GetValueOrDefault(i, snap.CpuTotalUtil),
-                        Temp = coreTemps.GetValueOrDefault(i, snap.CpuPackageTemp),
-                        Clock = coreClocks.GetValueOrDefault(i, snap.CpuMaxFrequency),
+                        Load = coreLoads.GetValueOrDefault(i, 0f),
+                        Temp = coreTemps.GetValueOrDefault(i, 0f),
+                        Clock = coreClocks.GetValueOrDefault(i, 0f),
                         Voltage = snap.CpuVoltage
                     });
                 }
@@ -521,9 +578,10 @@ public class HardwareEngine : IDisposable
             {
                 RecordSensor("RAPL Power Rails", "CPU Package Power", snap.CpuPackagePower, "W", allSensors);
             }
-            if (!allSensors.Any(s => s.Name.Equals("CPU Core VID", StringComparison.OrdinalIgnoreCase)))
+            string voltSensorName = snap.CpuVoltageIsVid ? "CPU Core VID" : "Motherboard Vcore";
+            if (!allSensors.Any(s => s.Name.Equals(voltSensorName, StringComparison.OrdinalIgnoreCase)))
             {
-                RecordSensor("CPU Voltage", "CPU Core VID", snap.CpuVoltage, "V", allSensors);
+                RecordSensor("CPU Voltage", voltSensorName, snap.CpuVoltage, "V", allSensors);
             }
             foreach (var kvp in coreClocks)
             {

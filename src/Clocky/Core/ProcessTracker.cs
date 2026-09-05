@@ -12,9 +12,9 @@ namespace Clocky.Core;
 
 public class ProcessTracker : IDisposable
 {
-    private readonly Dictionary<int, long> _prevCpuTimes = new(512);
-    private readonly Dictionary<int, (ulong ReadBytes, ulong WriteBytes)> _prevIoBytes = new(512);
-    private readonly Dictionary<int, (long Recv, long Sent)> _prevNetBytes = new(512);
+    private readonly Dictionary<(int Pid, long CreateTime), long> _prevCpuTimes = new(512);
+    private readonly Dictionary<(int Pid, long CreateTime), (ulong ReadBytes, ulong WriteBytes)> _prevIoBytes = new(512);
+    private readonly Dictionary<(int Pid, long CreateTime), (long Recv, long Sent)> _prevNetBytes = new(512);
     private DateTime _prevSampleTime = DateTime.UtcNow;
     private readonly int _logicalCoreCount = Math.Max(1, Environment.ProcessorCount);
     private readonly object _syncLock = new();
@@ -120,6 +120,7 @@ public class ProcessTracker : IDisposable
             try
             {
                 _etwSession?.Stop();
+                _etwTask?.Wait(500);
                 _etwSession?.Dispose();
                 _etwSession = null;
             }
@@ -136,9 +137,9 @@ public class ProcessTracker : IDisposable
             _prevSampleTime = now;
 
             var processMap = new Dictionary<int, ProcessItem>(512);
-            var currentCpuTimes = new Dictionary<int, long>(512);
-            var currentIoBytes = new Dictionary<int, (ulong ReadBytes, ulong WriteBytes)>(512);
-            var currentNetBytes = new Dictionary<int, (long Recv, long Sent)>(512);
+            var currentCpuTimes = new Dictionary<(int Pid, long CreateTime), long>(512);
+            var currentIoBytes = new Dictionary<(int Pid, long CreateTime), (ulong ReadBytes, ulong WriteBytes)>(512);
+            var currentNetBytes = new Dictionary<(int Pid, long CreateTime), (long Recv, long Sent)>(512);
 
             // 1. Fast Native Kernel Process Enumeration via NtQuerySystemInformation
             if (_nativeBuffer != IntPtr.Zero)
@@ -152,6 +153,8 @@ public class ProcessTracker : IDisposable
                     {
                         var proc = Marshal.PtrToStructure<SYSTEM_PROCESS_INFORMATION>(curr);
                         int pid = proc.UniqueProcessId.ToInt32();
+                        long createTime = proc.CreateTime;
+                        var procKey = (pid, createTime);
 
                         if (pid > 0) // Skip System Idle Process (PID 0)
                         {
@@ -164,14 +167,14 @@ public class ProcessTracker : IDisposable
                                 pName = pName.Substring(0, pName.Length - 4);
 
                             long rawCpuTime = proc.UserTime + proc.KernelTime;
-                            currentCpuTimes[pid] = rawCpuTime;
-                            currentIoBytes[pid] = ((ulong)proc.ReadTransferCount, (ulong)proc.WriteTransferCount);
+                            currentCpuTimes[procKey] = rawCpuTime;
+                            currentIoBytes[procKey] = ((ulong)proc.ReadTransferCount, (ulong)proc.WriteTransferCount);
 
                             float cpuUsage = 0f;
                             float diskReadMBps = 0f;
                             float diskWriteMBps = 0f;
 
-                            if (_prevCpuTimes.TryGetValue(pid, out long prevCpu))
+                            if (_prevCpuTimes.TryGetValue(procKey, out long prevCpu))
                             {
                                 long deltaCpu = rawCpuTime - prevCpu;
                                 if (deltaCpu > 0)
@@ -181,7 +184,7 @@ public class ProcessTracker : IDisposable
                                 }
                             }
 
-                            if (_prevIoBytes.TryGetValue(pid, out var prevIo))
+                            if (_prevIoBytes.TryGetValue(procKey, out var prevIo))
                             {
                                 ulong deltaRead = (ulong)proc.ReadTransferCount >= prevIo.ReadBytes ? (ulong)proc.ReadTransferCount - prevIo.ReadBytes : 0;
                                 ulong deltaWrite = (ulong)proc.WriteTransferCount >= prevIo.WriteBytes ? (ulong)proc.WriteTransferCount - prevIo.WriteBytes : 0;
@@ -195,9 +198,9 @@ public class ProcessTracker : IDisposable
                             {
                                 long curRecv = _etwRecvBytes.GetValueOrDefault(pid, 0L);
                                 long curSent = _etwSentBytes.GetValueOrDefault(pid, 0L);
-                                currentNetBytes[pid] = (curRecv, curSent);
+                                currentNetBytes[procKey] = (curRecv, curSent);
 
-                                if (_prevNetBytes.TryGetValue(pid, out var prevNet))
+                                if (_prevNetBytes.TryGetValue(procKey, out var prevNet))
                                 {
                                     long deltaRecv = curRecv >= prevNet.Recv ? curRecv - prevNet.Recv : 0;
                                     long deltaSent = curSent >= prevNet.Sent ? curSent - prevNet.Sent : 0;
@@ -331,26 +334,12 @@ public class ProcessTracker : IDisposable
                 .Take(3)
                 .ToList();
 
-            if (topGpu.Count < 3)
-            {
-                topGpu = leaderboardCandidates.OrderByDescending(p => p.GpuPercent).Take(3).ToList();
-            }
-
             // Top Disk I/O: Apps driving real SSD/HDD read & write bandwidth
             var topDiskIo = leaderboardCandidates
                 .Where(p => p.DiskReadMBps > 0.05f || p.DiskWriteMBps > 0.05f)
                 .OrderByDescending(p => p.DiskReadMBps + p.DiskWriteMBps)
                 .Take(3)
                 .ToList();
-
-            if (topDiskIo.Count < 3)
-            {
-                var fallbackDisk = leaderboardCandidates
-                    .Where(p => !topDiskIo.Contains(p))
-                    .OrderByDescending(p => p.WorkingSetBytes)
-                    .Take(3 - topDiskIo.Count);
-                topDiskIo.AddRange(fallbackDisk);
-            }
 
             // Top Active Network: Processes ranked by real-time upload & download throughput, then established connections
             var topNet = leaderboardCandidates
@@ -360,15 +349,6 @@ public class ProcessTracker : IDisposable
                 .ThenByDescending(p => p.ActiveSockets)
                 .Take(3)
                 .ToList();
-
-            if (topNet.Count < 3)
-            {
-                var fallbackNet = leaderboardCandidates
-                    .Where(p => !topNet.Contains(p))
-                    .OrderByDescending(p => p.WorkingSetBytes)
-                    .Take(3 - topNet.Count);
-                topNet.AddRange(fallbackNet);
-            }
 
             _lastDetailed = new ProcessTelemetrySnapshot
             {

@@ -112,6 +112,7 @@ public class TelemetrySnapshot
     public float CpuPackagePower { get; set; }
     public float CpuMaxFrequency { get; set; }
     public float CpuVoltage { get; set; }
+    public bool CpuVoltageIsVid { get; set; } = true;
     public List<CoreTelemetry> CpuCores { get; set; } = new();
 
     // GPU

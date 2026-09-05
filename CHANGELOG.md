@@ -4,6 +4,23 @@ All notable changes to Clocky are documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## [1.2.0] - 2026-09-05
+
+### Added
+- Native Windows kernel CPU topology extraction via `GetLogicalProcessorInformationEx` (`RelationProcessorCore`) in `CpuTopologyHelper`, directly resolving physical cores, `EfficiencyClass` (P-core vs E-core), SMT flags, and logical processor bitmasks without thread-count heuristics or CPU SKU string pattern matching.
+- Explicit electrical sensor distinction between native CPU MSR VID (`CPU Core VID`) and motherboard SuperIO/VRM voltage (`Motherboard Vcore`).
+
+### Changed
+- Refactored `ProcessTracker` sample caching to key previous measurements by `(int Pid, long CreateTime)` from `SYSTEM_PROCESS_INFORMATION.CreateTime`, eliminating accounting delta errors across rapid Windows PID reuse.
+- Updated CPU overview and vital cards to render `— GHz` or `— °C` when individual core telemetry is unavailable, enforcing strict zero synthetic fallbacks.
+
+### Fixed
+- Fixed misleading Top-3 leaderboard padding where idle applications were injected into Top Disk I/O and Top Network lists based on RAM consumption (`WorkingSetBytes`).
+- Fixed multi-threaded timer race condition in `HardwareEngine.Poll` by replacing non-atomic boolean flag with atomic `Interlocked.Exchange`.
+- Added synchronous timeout join (`_etwTask?.Wait(500)`) on background ETW trace processing task during `ProcessTracker.Dispose`.
+
+---
+
 ## [1.1.3] - 2026-09-04
 
 ### Security
