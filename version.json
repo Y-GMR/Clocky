@@ -1,7 +1,7 @@
 {
-  "version": "1.2.0",
+  "version": "1.2.1",
   "releaseDate": "2026-09-05",
-  "changelog": "Implemented native Windows kernel CPU topology extraction via GetLogicalProcessorInformationEx, eliminated synthetic per-core fallbacks, enforced PID reuse protection, and purged artificial RAM leaderboard padding.",
+  "changelog": "Fixed file sharing violation in auto-updater by releasing file stream handle before promoting staged binary.",
   "downloadUrl": "https://github.com/Y-GMR/Clocky/releases/latest/download/Clocky.exe",
   "mandatory": false,
   "sha256": "8880bf64282a6eda3301b605b97e48e69956c7aa5d74a14fc7455544d3a3c006"

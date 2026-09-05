@@ -174,10 +174,14 @@ public static class UpdateManager
                 throw new InvalidOperationException("Update manifest did not include a SHA256 hash - refusing to install an unverified binary.");
             }
 
-            using var sha = System.Security.Cryptography.SHA256.Create();
-            using var verifyStream = File.OpenRead(tempFile);
-            byte[] hashBytes = await sha.ComputeHashAsync(verifyStream);
-            string actualHash = Convert.ToHexString(hashBytes).ToLowerInvariant();
+            string actualHash;
+            using (var sha = System.Security.Cryptography.SHA256.Create())
+            using (var verifyStream = File.OpenRead(tempFile))
+            {
+                byte[] hashBytes = await sha.ComputeHashAsync(verifyStream);
+                actualHash = Convert.ToHexString(hashBytes).ToLowerInvariant();
+            }
+
             if (!string.Equals(actualHash, expectedSha256.Trim().ToLowerInvariant(), StringComparison.OrdinalIgnoreCase))
             {
                 if (File.Exists(tempFile))

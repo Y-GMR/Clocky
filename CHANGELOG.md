@@ -4,6 +4,13 @@ All notable changes to Clocky are documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## [1.2.1] - 2026-09-05
+
+### Fixed
+- Fixed auto-updater sharing violation crash (`ERROR_SHARING_VIOLATION` / `0x80070020`) in `UpdateManager.DownloadUpdateAsync` where `using var verifyStream` held an unclosed file handle on the downloaded binary during atomic file promotion (`File.Move`).
+
+---
+
 ## [1.2.0] - 2026-09-05
 
 ### Added
