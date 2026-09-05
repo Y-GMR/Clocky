@@ -4,5 +4,5 @@
   "changelog": "Implemented native Windows kernel CPU topology extraction via GetLogicalProcessorInformationEx, eliminated synthetic per-core fallbacks, enforced PID reuse protection, and purged artificial RAM leaderboard padding.",
   "downloadUrl": "https://github.com/Y-GMR/Clocky/releases/latest/download/Clocky.exe",
   "mandatory": false,
-  "sha256": "1ac4ddfc995b5b303317935c5ef4d5d1cdb245ff4a8708988490d20e8c50ccb2"
+  "sha256": "8880bf64282a6eda3301b605b97e48e69956c7aa5d74a14fc7455544d3a3c006"
 }
