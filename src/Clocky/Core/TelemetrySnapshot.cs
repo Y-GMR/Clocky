@@ -16,6 +16,18 @@ public class SensorRecord
     public float Max { get; set; }
     public float Avg { get; private set; }
     public string Unit { get; set; } = "";
+    public SensorProvenance Provenance { get; set; } = SensorProvenance.DriverLHM;
+    public string ProvenanceLabel => Provenance switch
+    {
+        SensorProvenance.NativeMSR => "MSR",
+        SensorProvenance.DriverLHM => "LHM",
+        SensorProvenance.DriverNVML => "NVML",
+        SensorProvenance.MotherboardSuperIO => "SuperIO",
+        SensorProvenance.KernelETW => "ETW",
+        SensorProvenance.PerformanceCounter => "PerfCtr",
+        SensorProvenance.FallbackApproximation => "Fallback",
+        _ => "—"
+    };
 
     public string FormattedCurrent => FormatValue(Value);
     public string FormattedMin => FormatValue(Min);
@@ -112,7 +124,30 @@ public class TelemetrySnapshot
     public float CpuPackagePower { get; set; }
     public float CpuMaxFrequency { get; set; }
     public float CpuVoltage { get; set; }
-    public bool CpuVoltageIsVid { get; set; } = true;
+    public SensorProvenance CpuPackageTempProvenance { get; set; } = SensorProvenance.Unavailable;
+    public string CpuPackageTempProvenanceLabel => CpuPackageTempProvenance switch
+    {
+        SensorProvenance.NativeMSR => "Native MSR (PECI)",
+        SensorProvenance.DriverLHM => "LHM Driver (Tdie)",
+        SensorProvenance.MotherboardSuperIO => "Motherboard Super I/O",
+        SensorProvenance.FallbackApproximation => "Core Max Fallback",
+        _ => "Unavailable"
+    };
+
+    public SensorProvenance CpuVoltageProvenance { get; set; } = SensorProvenance.Unavailable;
+    public string CpuVoltageProvenanceLabel => CpuVoltageProvenance switch
+    {
+        SensorProvenance.NativeMSR => "Native MSR (VID)",
+        SensorProvenance.MotherboardSuperIO => "Motherboard Vcore",
+        _ => "Unavailable"
+    };
+
+    public bool CpuVoltageIsVid
+    {
+        get => CpuVoltageProvenance == SensorProvenance.NativeMSR;
+        set => CpuVoltageProvenance = value ? SensorProvenance.NativeMSR : SensorProvenance.MotherboardSuperIO;
+    }
+    public GpuProcessEngineState GpuProcessEngineState { get; set; } = GpuProcessEngineState.Active;
     public List<CoreTelemetry> CpuCores { get; set; } = new();
 
     // GPU
@@ -232,6 +267,40 @@ public class ProcessItem
 
     public string FormattedNetThroughput => (NetDownSpeedKBps > 0.05f || NetUpSpeedKBps > 0.05f) ? $"↓ {NetworkTracker.FormatSpeed(NetDownSpeedKBps)} • ↑ {NetworkTracker.FormatSpeed(NetUpSpeedKBps)}" : (EstablishedSockets > 0 ? $"{EstablishedSockets} Conns" : (ActiveSockets > 0 ? $"{ActiveSockets} Sockets" : "0 B/s"));
 
+    public int ThreadCount { get; set; }
+    public string Status { get; set; } = "Running";
+
+    public List<ProcessInstanceItem> Children { get; set; } = new();
+    public bool HasChildren => Children.Count > 1;
+    public bool IsExpanded { get; set; }
+}
+
+public class ProcessInstanceItem
+{
+    public int Pid { get; set; }
+    public string FormattedPid => Pid.ToString();
+    public string Name { get; set; } = "";
+    public long CreateTime { get; set; }
+    public float CpuPercent { get; set; }
+    public string FormattedCpu => $"{CpuPercent:F1}%";
+    public float GpuPercent { get; set; }
+    public string FormattedGpu => $"{GpuPercent:F1}%";
+    public float GpuVramMb { get; set; }
+    public string FormattedGpuVram => GpuVramMb >= 1024f ? $"{(GpuVramMb / 1024f):F1} GB" : $"{GpuVramMb:F0} MB";
+    public long PrivateMemoryBytes { get; set; }
+    public float PrivateMemoryMb => PrivateMemoryBytes / (1024f * 1024f);
+    public string FormattedPrivateMemory => PrivateMemoryMb >= 1024f ? $"{(PrivateMemoryMb / 1024f):F1} GB" : $"{PrivateMemoryMb:F0} MB";
+    public long WorkingSetBytes { get; set; }
+    public float WorkingSetMb => WorkingSetBytes / (1024f * 1024f);
+    public string FormattedWorkingSet => WorkingSetMb >= 1024f ? $"{(WorkingSetMb / 1024f):F1} GB" : $"{WorkingSetMb:F0} MB";
+    public float DiskReadMBps { get; set; }
+    public float DiskWriteMBps { get; set; }
+    public string FormattedDiskIo => (DiskReadMBps > 0.05f || DiskWriteMBps > 0.05f) ? $"R: {DiskReadMBps:F1} • W: {DiskWriteMBps:F1} MB/s" : "0.0 MB/s";
+    public float NetDownSpeedKBps { get; set; }
+    public float NetUpSpeedKBps { get; set; }
+    public string FormattedNetThroughput => (NetDownSpeedKBps > 0.05f || NetUpSpeedKBps > 0.05f) ? $"↓ {NetworkTracker.FormatSpeed(NetDownSpeedKBps)} • ↑ {NetworkTracker.FormatSpeed(NetUpSpeedKBps)}" : "0 B/s";
+    public int EstablishedSockets { get; set; }
+    public int ActiveSockets { get; set; }
     public int ThreadCount { get; set; }
     public string Status { get; set; } = "Running";
 }

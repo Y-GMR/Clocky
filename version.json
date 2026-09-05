@@ -1,8 +1,8 @@
 {
-  "version": "1.2.1",
+  "version": "1.3.0",
   "releaseDate": "2026-09-05",
-  "changelog": "Fixed file sharing violation in auto-updater by releasing file stream handle before promoting staged binary.",
+  "changelog": "Global Sensor Provenance Architecture, child process instance inspection, GPU engine health detection, and native Task Scheduler COM registration.",
   "downloadUrl": "https://github.com/Y-GMR/Clocky/releases/latest/download/Clocky.exe",
   "mandatory": false,
-  "sha256": "584f99ebfd92f4e49fdbace1b28f705a3e41d152eb843f6aebf7ff391c68794e"
+  "sha256": "9f868d72efa72ee7ff91aaba4d20e6f8e7471523a8bc350d5ad6b6bff337aafd"
 }

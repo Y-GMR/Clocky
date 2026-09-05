@@ -28,6 +28,7 @@
         <SolidColorBrush x:Key="BrushMetricGreen" Color="#22C55E"/>
         <SolidColorBrush x:Key="BrushMetricRed" Color="#EF4444"/>
         <SolidColorBrush x:Key="BrushGridLine" Color="#424549"/>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
 
         <!-- SKEUOMORPHIC SOFT DROP SHADOWS -->
         <DropShadowEffect x:Key="SkeuoCardShadow" BlurRadius="14" ShadowDepth="3" Direction="315" Color="#0F1113" Opacity="0.8"/>
@@ -677,6 +678,14 @@
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
                         <DataGridTextColumn Header="Unit" Binding="{Binding Unit}" SortMemberPath="Unit" Width="70" MinWidth="45" MaxWidth="120"/>
+                        <DataGridTextColumn Header="Source" Binding="{Binding ProvenanceLabel}" SortMemberPath="Provenance" Width="130" MinWidth="80" MaxWidth="180">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="{DynamicResource BrushTextSecondary}"/>
+                                    <Setter Property="FontSize" Value="10.5"/>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
                     </DataGrid.Columns>
                 </DataGrid>
             </Grid>
@@ -1602,6 +1611,9 @@
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                 <TextBlock Text="PROCESS OBSERVABILITY MATRIX" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" FontSize="11" VerticalAlignment="Center" Margin="0,0,10,0"/>
                                 <TextBlock x:Name="TxtProcessCount" Text="0 Active Processes" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10.5" VerticalAlignment="Center"/>
+                                <Border x:Name="BrdGpuEngineStatus" Margin="10,0,0,0" Padding="6,2" CornerRadius="4" Background="#33EF4444" BorderBrush="#EF4444" BorderThickness="1" Visibility="Collapsed" VerticalAlignment="Center">
+                                    <TextBlock x:Name="TxtGpuEngineStatus" Text="GPU Engine: Counters Inactive" FontSize="10" FontWeight="SemiBold" Foreground="#EF4444"/>
+                                </Border>
                             </StackPanel>
 
                             <!-- Search Box -->
@@ -1612,7 +1624,42 @@
 
                         <!-- Live DataGrid -->
                         <DataGrid Grid.Row="1" x:Name="GridAllProcesses" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" IsReadOnly="True" CanUserResizeColumns="True" CanUserReorderColumns="True" HeadersVisibility="Column" GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="{DynamicResource BrushGridLine}" Background="Transparent" BorderThickness="0" Sorting="GridAllProcesses_Sorting" RowHeight="24" SelectionUnit="FullRow" ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                  RowDetailsVisibilityMode="VisibleWhenSelected"
                                   VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling" ScrollViewer.CanContentScroll="True" EnableRowVirtualization="True">
+                            <DataGrid.RowDetailsTemplate>
+                                <DataTemplate>
+                                    <Border Margin="24,2,8,6" Padding="8,6" Background="{DynamicResource BrushCardSunken}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" CornerRadius="6"
+                                            Visibility="{Binding HasChildren, Converter={StaticResource BoolToVis}}">
+                                        <StackPanel>
+                                            <TextBlock Text="Child Process Instances (PIDs):" FontSize="10.5" FontWeight="Bold" Foreground="{DynamicResource BrushTextSecondary}" Margin="0,0,0,4"/>
+                                            <ItemsControl ItemsSource="{Binding Children}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Grid Margin="0,1" Height="20">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="65"/>
+                                                                <ColumnDefinition Width="180"/>
+                                                                <ColumnDefinition Width="55"/>
+                                                                <ColumnDefinition Width="55"/>
+                                                                <ColumnDefinition Width="80"/>
+                                                                <ColumnDefinition Width="80"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock Grid.Column="0" Text="{Binding FormattedPid}" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10" VerticalAlignment="Center"/>
+                                                            <TextBlock Grid.Column="1" Text="{Binding Name}" Foreground="{DynamicResource BrushTextPrimary}" FontSize="10" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                                            <TextBlock Grid.Column="2" Text="{Binding FormattedCpu}" Foreground="{DynamicResource BrushAccentCobalt}" FontSize="10" TextAlignment="Right" VerticalAlignment="Center"/>
+                                                            <TextBlock Grid.Column="3" Text="{Binding FormattedGpu}" Foreground="{DynamicResource BrushAccentCobalt}" FontSize="10" TextAlignment="Right" VerticalAlignment="Center"/>
+                                                            <TextBlock Grid.Column="4" Text="{Binding FormattedWorkingSet}" Foreground="{DynamicResource BrushTextPrimary}" FontSize="10" TextAlignment="Right" VerticalAlignment="Center"/>
+                                                            <TextBlock Grid.Column="5" Text="{Binding FormattedPrivateMemory}" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10" TextAlignment="Right" VerticalAlignment="Center"/>
+                                                            <TextBlock Grid.Column="6" Text="{Binding Status}" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                                                        </Grid>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </DataGrid.RowDetailsTemplate>
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="PID" Binding="{Binding FormattedPid}" SortMemberPath="Pid" Width="55" MinWidth="40" MaxWidth="90"/>
                                 <DataGridTextColumn Header="PROCESS NAME" Binding="{Binding DisplayName}" SortMemberPath="Name" Width="240" MinWidth="110"/>

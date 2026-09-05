@@ -38,6 +38,7 @@ public class ProcessTracker : IDisposable
     private DateTime _lastGpuCounterRefresh = DateTime.MinValue;
 
     public bool DetailedMode { get; set; } = false;
+    public GpuProcessEngineState GpuEngineState { get; private set; } = GpuProcessEngineState.Active;
     private ProcessTelemetrySnapshot _lastDetailed = new();
 
     public ProcessTracker()
@@ -280,6 +281,28 @@ public class ProcessTracker : IDisposable
                 {
                     var primary = g.OrderByDescending(p => p.WorkingSetBytes).First();
                     int count = g.Count();
+                    var children = count > 1
+                        ? g.OrderByDescending(p => p.WorkingSetBytes)
+                           .Select(p => new ProcessInstanceItem
+                           {
+                               Pid = p.Pid,
+                               Name = p.Name,
+                               CpuPercent = p.CpuPercent,
+                               GpuPercent = p.GpuPercent,
+                               GpuVramMb = p.GpuVramMb,
+                               PrivateMemoryBytes = p.PrivateMemoryBytes,
+                               WorkingSetBytes = p.WorkingSetBytes,
+                               DiskReadMBps = p.DiskReadMBps,
+                               DiskWriteMBps = p.DiskWriteMBps,
+                               EstablishedSockets = p.EstablishedSockets,
+                               ActiveSockets = p.ActiveSockets,
+                               NetDownSpeedKBps = p.NetDownSpeedKBps,
+                               NetUpSpeedKBps = p.NetUpSpeedKBps,
+                               ThreadCount = p.ThreadCount,
+                               Status = p.Status
+                           }).ToList()
+                        : new List<ProcessInstanceItem>();
+
                     return new ProcessItem
                     {
                         Pid = primary.Pid,
@@ -297,7 +320,8 @@ public class ProcessTracker : IDisposable
                         NetDownSpeedKBps = g.Sum(p => p.NetDownSpeedKBps),
                         NetUpSpeedKBps = g.Sum(p => p.NetUpSpeedKBps),
                         ThreadCount = g.Sum(p => p.ThreadCount),
-                        Status = "Running"
+                        Status = "Running",
+                        Children = children
                     };
                 })
                 .ToList();
@@ -486,9 +510,28 @@ public class ProcessTracker : IDisposable
                 _lastGpuCounterRefresh = DateTime.UtcNow;
                 try
                 {
+                    if (!PerformanceCounterCategory.Exists("GPU Engine"))
+                    {
+                        GpuEngineState = GpuProcessEngineState.CountersDisabled;
+                        return;
+                    }
+
                     var cat = new PerformanceCounterCategory("GPU Engine");
                     var insts = cat.GetInstanceNames();
                     var activeInsts = new HashSet<string>(insts.Where(i => i.Contains("pid_") && (i.Contains("engtype_3D") || i.Contains("engtype_Compute"))));
+
+                    if (insts.Length > 0 && activeInsts.Count == 0)
+                    {
+                        GpuEngineState = GpuProcessEngineState.NoSupportedEngines;
+                    }
+                    else if (insts.Length == 0)
+                    {
+                        GpuEngineState = GpuProcessEngineState.CountersDisabled;
+                    }
+                    else
+                    {
+                        GpuEngineState = GpuProcessEngineState.Active;
+                    }
 
                     var toRemove = _gpuCounters.Keys.Where(k => !activeInsts.Contains(k)).ToList();
                     foreach (var k in toRemove)
@@ -507,11 +550,18 @@ public class ProcessTracker : IDisposable
                                 ctr.NextValue();
                                 _gpuCounters[inst] = ctr;
                             }
-                            catch { }
+                            catch (Exception ex)
+                            {
+                                DiagnosticRingBuffer.Log("ProcessTracker:GpuCounterInit", ex);
+                            }
                         }
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    GpuEngineState = GpuProcessEngineState.Failed;
+                    DiagnosticRingBuffer.Log("ProcessTracker:GpuCategoryQuery", ex);
+                }
             }
 
             foreach (var (inst, ctr) in _gpuCounters)
@@ -538,10 +588,17 @@ public class ProcessTracker : IDisposable
                         }
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    DiagnosticRingBuffer.Log("ProcessTracker:GpuCounterRead", ex);
+                }
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            GpuEngineState = GpuProcessEngineState.Failed;
+            DiagnosticRingBuffer.Log("ProcessTracker:PollGpuCounters", ex);
+        }
     }
 
     #region Win32 P/Invoke Definitions

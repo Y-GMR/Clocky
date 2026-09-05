@@ -1434,7 +1434,11 @@ public partial class MainWindow : Window
         // Tab 2: CPU Topology & Oscilloscopes
         if (ViewCpu != null && ViewCpu.Visibility == Visibility.Visible)
         {
-            if (CpuPkgTempText != null) CpuPkgTempText.Text = snap.CpuPackageTemp > 0 ? $"{snap.CpuPackageTemp:F1} °C" : "— °C";
+            if (CpuPkgTempText != null)
+            {
+                CpuPkgTempText.Text = snap.CpuPackageTemp > 0 ? $"{snap.CpuPackageTemp:F1} °C" : "— °C";
+                CpuPkgTempText.ToolTip = $"Source: {snap.CpuPackageTempProvenanceLabel}";
+            }
             if (CpuPkgPowerText != null) CpuPkgPowerText.Text = snap.CpuPackagePower > 0 ? $"{snap.CpuPackagePower:F1} W" : "— W";
 
             var coresWithClock = snap.CpuCores.Where(c => c.Clock > 0).ToList();
@@ -1445,6 +1449,7 @@ public partial class MainWindow : Window
             {
                 string voltLabel = snap.CpuVoltageIsVid ? "" : "Vcore ";
                 CpuVidText.Text = snap.CpuVoltage > 0 ? $"{voltLabel}{snap.CpuVoltage:F3} V" : "— V";
+                CpuVidText.ToolTip = $"Source: {snap.CpuVoltageProvenanceLabel}";
             }
 
             if (TxtCpuLoadVital != null) TxtCpuLoadVital.Text = $"{snap.CpuTotalUtil:F1}%";
@@ -1636,6 +1641,25 @@ public partial class MainWindow : Window
         {
             RenderProcessTopCards(snap.Processes);
             ApplyProcessSortingAndFilter(snap.Processes.AllProcesses);
+
+            if (BrdGpuEngineStatus != null && TxtGpuEngineStatus != null)
+            {
+                if (snap.GpuProcessEngineState == GpuProcessEngineState.Active)
+                {
+                    BrdGpuEngineStatus.Visibility = Visibility.Collapsed;
+                }
+                else
+                {
+                    BrdGpuEngineStatus.Visibility = Visibility.Visible;
+                    TxtGpuEngineStatus.Text = snap.GpuProcessEngineState switch
+                    {
+                        GpuProcessEngineState.CountersDisabled => "GPU Engine: Counters Disabled / Inactive",
+                        GpuProcessEngineState.NoSupportedEngines => "GPU Engine: No 3D/Compute Engines",
+                        GpuProcessEngineState.Failed => "GPU Engine: Query Exception (Logged)",
+                        _ => "GPU Engine: Unavailable"
+                    };
+                }
+            }
         }
     }
 
@@ -2365,6 +2389,7 @@ public partial class MainWindow : Window
             filtered = filtered.Where(s =>
                 s.Name.Contains(_sensorFilter, StringComparison.OrdinalIgnoreCase) ||
                 s.Category.Contains(_sensorFilter, StringComparison.OrdinalIgnoreCase) ||
+                s.ProvenanceLabel.Contains(_sensorFilter, StringComparison.OrdinalIgnoreCase) ||
                 s.FormattedCurrent.Contains(_sensorFilter, StringComparison.OrdinalIgnoreCase));
         }
 
@@ -2384,6 +2409,7 @@ public partial class MainWindow : Window
                 "Avg" => asc ? filtered.OrderBy(s => s.Avg) : filtered.OrderByDescending(s => s.Avg),
                 "FormattedAvg" => asc ? filtered.OrderBy(s => s.Avg) : filtered.OrderByDescending(s => s.Avg),
                 "Unit" => asc ? filtered.OrderBy(s => s.Unit) : filtered.OrderByDescending(s => s.Unit),
+                "Provenance" or "ProvenanceLabel" => asc ? filtered.OrderBy(s => s.Provenance) : filtered.OrderByDescending(s => s.Provenance),
                 _ => filtered
             };
         }

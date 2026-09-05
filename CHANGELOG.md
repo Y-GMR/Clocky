@@ -4,6 +4,22 @@ All notable changes to Clocky are documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## [1.3.0] - 2026-09-05
+
+### Added
+- Global Sensor Provenance Architecture (`SensorProvenance`): every sensor and telemetry metric across CPU thermals, RAPL power rails, core frequencies, voltages, GPU silicon, memory, battery, storage, and network is explicitly tagged with its authoritative source (`NativeMSR`, `DriverLHM`, `MotherboardSuperIO`, `KernelETW`, `PerformanceCounter`, `FallbackApproximation`, `Unavailable`).
+- Source column in All Sensors Matrix displaying sensor provenance labels, supporting interactive sorting and filter queries (e.g. searching "MSR", "LHM", "ETW", or "SuperIO").
+- Expandable child process grouping in Process Observability Matrix: selecting grouped multi-instance process rows (e.g. browsers, IDE workers) expands inline row details displaying individual child PIDs with per-process CPU, GPU, RAM, and status telemetry.
+- Bounded thread-safe in-memory diagnostic buffer (`DiagnosticRingBuffer`, 200 events) recording swallowed sensor exceptions, driver queries, and API errors.
+- Real-time GPU engine status badge (`BrdGpuEngineStatus`) in Process Observability Matrix notifying users if Windows GPU performance counters are inactive, missing, or uninitialized instead of silently rendering 0%.
+- Native in-process Task Scheduler COM registration via `Schedule.Service`, creating and managing elevated logon tasks with zero CLI process spawning and zero temporary disk files.
+
+### Changed
+- Refactored `StartupHelper` to prioritize native Task Scheduler COM registration before falling back to `schtasks.exe`.
+- Added provenance tooltips to CPU package temperature and voltage telemetry displays in CPU Observability view.
+
+---
+
 ## [1.2.1] - 2026-09-05
 
 ### Fixed

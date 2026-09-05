@@ -293,7 +293,15 @@ public class HardwareEngine : IDisposable
                 {
                     if (!sensor.Value.HasValue) continue;
                     var val = sensor.Value.Value;
-                    RecordSensor(GetCpuCategory(sensor.SensorType), sensor.Name, val, GetSensorUnit(sensor.SensorType), allSensors);
+                    var prov = sensor.SensorType switch
+                    {
+                        SensorType.Voltage => SensorProvenance.NativeMSR,
+                        SensorType.Power => SensorProvenance.NativeMSR,
+                        SensorType.Clock => SensorProvenance.NativeMSR,
+                        SensorType.Temperature => SensorProvenance.DriverLHM,
+                        _ => SensorProvenance.DriverLHM
+                    };
+                    RecordSensor(GetCpuCategory(sensor.SensorType), sensor.Name, val, GetSensorUnit(sensor.SensorType), allSensors, prov);
 
                     switch (sensor.SensorType)
                     {
@@ -363,12 +371,16 @@ public class HardwareEngine : IDisposable
                                 sensor.Name.Equals("Package", StringComparison.OrdinalIgnoreCase))
                             {
                                 snap.CpuPackageTemp = val;
+                                snap.CpuPackageTempProvenance = SensorProvenance.NativeMSR;
                             }
                             else if (sensor.Name.Contains("Core Max", StringComparison.OrdinalIgnoreCase))
                             {
                                 snap.CpuCoreMaxTemp = val;
                                 if (snap.CpuPackageTemp == 0)
+                                {
                                     snap.CpuPackageTemp = val;
+                                    snap.CpuPackageTempProvenance = SensorProvenance.FallbackApproximation;
+                                }
                             }
                             else if (sensor.Name.Contains("Core Average", StringComparison.OrdinalIgnoreCase) ||
                                      sensor.Name.Contains("Core Avg", StringComparison.OrdinalIgnoreCase))
@@ -378,7 +390,10 @@ public class HardwareEngine : IDisposable
                             else if (sensor.Name.Contains("Tdie", StringComparison.OrdinalIgnoreCase))
                             {
                                 if (snap.CpuPackageTemp == 0)
+                                {
                                     snap.CpuPackageTemp = val;
+                                    snap.CpuPackageTempProvenance = SensorProvenance.DriverLHM;
+                                }
                             }
                             else
                             {
@@ -477,6 +492,7 @@ public class HardwareEngine : IDisposable
                                 {
                                     snap.CpuVoltage = val;
                                     snap.CpuVoltageIsVid = sensor.Name.Contains("VID", StringComparison.OrdinalIgnoreCase) || !sensor.Name.Contains("Vcore", StringComparison.OrdinalIgnoreCase);
+                                    snap.CpuVoltageProvenance = snap.CpuVoltageIsVid ? SensorProvenance.NativeMSR : SensorProvenance.MotherboardSuperIO;
                                 }
                             }
                             break;
@@ -507,7 +523,10 @@ public class HardwareEngine : IDisposable
 
                 // Fallback for CPU Package Temperature if MSR is unavailable
                 if (snap.CpuPackageTemp == 0 && coreTemps.Count > 0)
+                {
                     snap.CpuPackageTemp = coreTemps.Values.Max();
+                    snap.CpuPackageTempProvenance = SensorProvenance.FallbackApproximation;
+                }
 
                 if (snap.CpuPackageTemp == 0)
                 {
@@ -528,6 +547,7 @@ public class HardwareEngine : IDisposable
                     if (fallbackTemp > 0)
                     {
                         snap.CpuPackageTemp = fallbackTemp;
+                        snap.CpuPackageTempProvenance = SensorProvenance.MotherboardSuperIO;
                     }
                 }
 
@@ -542,6 +562,7 @@ public class HardwareEngine : IDisposable
                             {
                                 snap.CpuVoltage = s.Value.GetValueOrDefault();
                                 snap.CpuVoltageIsVid = false;
+                                snap.CpuVoltageProvenance = SensorProvenance.MotherboardSuperIO;
                                 break;
                             }
                         }
@@ -572,16 +593,16 @@ public class HardwareEngine : IDisposable
             // Ensure All Sensors Matrix contains Package Temperature, RAPL Power, Clocks, and VID
             if (!allSensors.Any(s => s.Name.Equals("CPU Package", StringComparison.OrdinalIgnoreCase) && s.Category.Contains("Temperature")))
             {
-                RecordSensor("CPU Thermals", "CPU Package", snap.CpuPackageTemp, "°C", allSensors);
+                RecordSensor("CPU Thermals", "CPU Package", snap.CpuPackageTemp, "°C", allSensors, snap.CpuPackageTempProvenance);
             }
             if (!allSensors.Any(s => s.Name.Equals("CPU Package Power", StringComparison.OrdinalIgnoreCase) && s.Category.Contains("Power")))
             {
-                RecordSensor("RAPL Power Rails", "CPU Package Power", snap.CpuPackagePower, "W", allSensors);
+                RecordSensor("RAPL Power Rails", "CPU Package Power", snap.CpuPackagePower, "W", allSensors, SensorProvenance.NativeMSR);
             }
             string voltSensorName = snap.CpuVoltageIsVid ? "CPU Core VID" : "Motherboard Vcore";
             if (!allSensors.Any(s => s.Name.Equals(voltSensorName, StringComparison.OrdinalIgnoreCase)))
             {
-                RecordSensor("CPU Voltage", voltSensorName, snap.CpuVoltage, "V", allSensors);
+                RecordSensor("CPU Voltage", voltSensorName, snap.CpuVoltage, "V", allSensors, snap.CpuVoltageProvenance);
             }
             foreach (var kvp in coreClocks)
             {
@@ -589,11 +610,12 @@ public class HardwareEngine : IDisposable
                 var existingClock = allSensors.FirstOrDefault(s => s.Category.Contains("Clock") && s.Name.Equals(clockName, StringComparison.OrdinalIgnoreCase));
                 if (existingClock != null)
                 {
+                    existingClock.Provenance = SensorProvenance.PerformanceCounter;
                     existingClock.Update(kvp.Value);
                 }
                 else
                 {
-                    RecordSensor("CPU Clocks", clockName, kvp.Value, "MHz", allSensors);
+                    RecordSensor("CPU Clocks", clockName, kvp.Value, "MHz", allSensors, SensorProvenance.PerformanceCounter);
                 }
             }
         }
@@ -616,7 +638,7 @@ public class HardwareEngine : IDisposable
                 {
                     if (!sensor.Value.HasValue) continue;
                     var val = sensor.Value.Value;
-                    RecordSensor($"GPU ({snap.GpuName})", sensor.Name, val, GetSensorUnit(sensor.SensorType), allSensors);
+                    RecordSensor($"GPU ({snap.GpuName})", sensor.Name, val, GetSensorUnit(sensor.SensorType), allSensors, SensorProvenance.DriverLHM);
 
                     switch (sensor.SensorType)
                     {
@@ -752,7 +774,7 @@ public class HardwareEngine : IDisposable
                         snap.RamTotalGb = snap.RamUsedGb + snap.RamAvailableGb;
 
                     string memCategory = $"Memory ({Math.Round(snap.RamTotalGb):F0}GB {snap.RamTypeStr})";
-                    RecordSensor(memCategory, sensor.Name, val, GetSensorUnit(sensor.SensorType), allSensors);
+                    RecordSensor(memCategory, sensor.Name, val, GetSensorUnit(sensor.SensorType), allSensors, SensorProvenance.MotherboardSuperIO);
                 }
             }
         }
@@ -769,7 +791,7 @@ public class HardwareEngine : IDisposable
                 {
                     if (!sensor.Value.HasValue) continue;
                     var val = sensor.Value.Value;
-                    RecordSensor("Battery", sensor.Name, val, GetSensorUnit(sensor.SensorType), allSensors);
+                    RecordSensor("Battery", sensor.Name, val, GetSensorUnit(sensor.SensorType), allSensors, SensorProvenance.DriverLHM);
 
                     if (sensor.SensorType == SensorType.Level && sensor.Name.Contains("Charge", StringComparison.OrdinalIgnoreCase))
                         snap.BatteryPercent = val;
@@ -851,7 +873,7 @@ public class HardwareEngine : IDisposable
                 {
                     if (!s.Value.HasValue) continue;
                     var val = s.Value.Value;
-                    RecordSensor($"Storage ({st.Name})", s.Name, val, GetSensorUnit(s.SensorType), allSensors);
+                    RecordSensor($"Storage ({st.Name})", s.Name, val, GetSensorUnit(s.SensorType), allSensors, SensorProvenance.DriverLHM);
 
                     if (s.SensorType == SensorType.Throughput)
                     {
@@ -899,8 +921,8 @@ public class HardwareEngine : IDisposable
             snap.TotalDiskReadSpeedMBps = totalDiskRead;
             snap.TotalDiskWriteSpeedMBps = totalDiskWrite;
 
-            RecordSensor("Storage", "Total Disk Read", totalDiskRead, "MB/s", allSensors);
-            RecordSensor("Storage", "Total Disk Write", totalDiskWrite, "MB/s", allSensors);
+            RecordSensor("Storage", "Total Disk Read", totalDiskRead, "MB/s", allSensors, SensorProvenance.PerformanceCounter);
+            RecordSensor("Storage", "Total Disk Write", totalDiskWrite, "MB/s", allSensors, SensorProvenance.PerformanceCounter);
         }
         catch { }
 
@@ -1012,26 +1034,33 @@ public class HardwareEngine : IDisposable
             snap.ActiveNetworkIp = priIp;
             snap.NetworkInterfaces = netInterfaces;
 
-            RecordSensor("Network", "Total Download Speed", netDownKBps / 1024f, "MB/s", allSensors);
-            RecordSensor("Network", "Total Upload Speed", netUpKBps / 1024f, "MB/s", allSensors);
+            RecordSensor("Network", "Total Download Speed", netDownKBps / 1024f, "MB/s", allSensors, SensorProvenance.KernelETW);
+            RecordSensor("Network", "Total Upload Speed", netUpKBps / 1024f, "MB/s", allSensors, SensorProvenance.KernelETW);
 
             foreach (var nic in netInterfaces)
             {
                 if (nic.IsUp)
                 {
-                    RecordSensor($"Network ({nic.Name})", "Download Speed", nic.DownloadSpeedKBps / 1024f, "MB/s", allSensors);
-                    RecordSensor($"Network ({nic.Name})", "Upload Speed", nic.UploadSpeedKBps / 1024f, "MB/s", allSensors);
+                    RecordSensor($"Network ({nic.Name})", "Download Speed", nic.DownloadSpeedKBps / 1024f, "MB/s", allSensors, SensorProvenance.KernelETW);
+                    RecordSensor($"Network ({nic.Name})", "Upload Speed", nic.UploadSpeedKBps / 1024f, "MB/s", allSensors, SensorProvenance.KernelETW);
                 }
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            DiagnosticRingBuffer.Log("HardwareEngine:NetworkPoll", ex);
+        }
 
         // 8. Process Telemetry & Top Resource Consumers
         try
         {
             snap.Processes = _processTracker.Poll(netDownKBps, netUpKBps);
+            snap.GpuProcessEngineState = _processTracker.GpuEngineState;
         }
-        catch { }
+        catch (Exception ex)
+        {
+            DiagnosticRingBuffer.Log("HardwareEngine:ProcessPoll", ex);
+        }
 
         snap.AllSensors = allSensors;
         return snap;
@@ -1047,7 +1076,7 @@ public class HardwareEngine : IDisposable
         _ => "CPU General"
     };
 
-    private void RecordSensor(string category, string name, float val, string unit, List<SensorRecord> list)
+    private void RecordSensor(string category, string name, float val, string unit, List<SensorRecord> list, SensorProvenance provenance = SensorProvenance.DriverLHM)
     {
         string key = $"{category}::{name}";
         lock (_sensorHistory)
@@ -1060,8 +1089,12 @@ public class HardwareEngine : IDisposable
 
             if (!_sensorHistory.TryGetValue(key, out var rec))
             {
-                rec = new SensorRecord { Category = category, Name = name, Unit = unit };
+                rec = new SensorRecord { Category = category, Name = name, Unit = unit, Provenance = provenance };
                 _sensorHistory[key] = rec;
+            }
+            else
+            {
+                rec.Provenance = provenance;
             }
             rec.Update(val);
             list.Add(rec);
