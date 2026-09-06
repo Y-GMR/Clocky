@@ -17,12 +17,13 @@ Hardware telemetry and observability platform for Windows 10 and 11 (x64), built
 Clocky ingests ring-0 kernel telemetry, DirectX performance counters, ETW network traces, and OS process metrics, rendering real-time graphs and system tray badges.
 
 ### Core Subsystems
-- **CPU Topology Engine**: Detects Intel Hybrid architectures (separating Performance Cores and Efficiency Cores) and AMD Ryzen uniform CCX/CCD topologies. Tracks per-core clocks, VID, and load.
-- **Hardware Telemetry Pipeline**: Queries CPU/GPU sensors via LibreHardwareMonitorLib (`WinRing0`), NVML, and DXGI at configurable polling intervals (default 1000ms).
-- **Process Resource Attribution**: Tracks instantaneous top resource consumers across CPU, GPU (3D and VRAM engines), system memory, disk I/O, and real-time network throughput.
+- **CPU Topology Engine**: Detects Intel Hybrid architectures (separating Performance Cores and Efficiency Cores) and AMD Ryzen uniform CCX/CCD topologies. Tracks per-core clocks, VID, and load with pre-cached core structures.
+- **Sensor Provenance Pipeline**: Full cryptographic/driver provenance tracking on every sensor (Native MSR/PECI, Driver LHM, NVML, Motherboard Super I/O, Kernel ETW, Performance Counter) with zero synthetic fallbacks.
+- **Process Resource Attribution & Hierarchy**: Tracks top resource consumers across CPU, GPU (3D and VRAM engines), system memory, disk I/O, and real-time network throughput, with multi-instance process grouping and child PID drill-down.
+- **In-Process Task Scheduler Integration**: Direct `Schedule.Service` COM API registration for elevated Windows startup without spawning external command interpreters or creating temporary XML files.
 - **Real-Time Oscilloscopes**: Fixed-capacity 60-sample rolling waveform buffers with cached max-bound calculations and sub-pixel hover interpolation.
 - **Win32 Notification Tray Engine**: Custom `ClockyTrayIcon` implementation wrapping `Shell_NotifyIcon` with independent HWNDs and unique `uID` assignments, preventing Windows 11 taskbar icon grouping collisions.
-- **Diagnostics & Error Interception**: Global exception interceptor with structured crash logging and diagnostic report modals.
+- **Diagnostics & Error Interception**: Global exception interceptor with structured crash logging, 200-event FIFO in-memory `DiagnosticRingBuffer`, and diagnostic report modals.
 
 ---
 

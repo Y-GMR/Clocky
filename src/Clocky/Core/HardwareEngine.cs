@@ -60,6 +60,13 @@ public class HardwareEngine : IDisposable
     private static readonly Dictionary<string, (string BusType, bool IsHdd, bool IsRemovable)> _driveDescriptorCache = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<string, int> _driveDeviceNumberCache = new(StringComparer.OrdinalIgnoreCase);
 
+    private static readonly System.Text.RegularExpressions.Regex s_peCoreRegex =
+        new(@"(P|E)-Core #(\d+)", System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    private static readonly System.Text.RegularExpressions.Regex s_cpuCoreThreadRegex =
+        new(@"CPU Core #(\d+)\s+Thread #(\d+)", System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    private static readonly System.Text.RegularExpressions.Regex s_cpuCoreRegex =
+        new(@"CPU Core #(\d+)", System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
     private static (string BusType, bool IsHdd, bool IsRemovable) GetDriveMediaDescriptor(string driveLetter)
     {
         lock (_driveDescriptorCache)
@@ -286,8 +293,8 @@ public class HardwareEngine : IDisposable
 
                 var topology = CpuTopologyHelper.GetTopology();
                 int totalThreads = topology.LogicalProcessorCount;
-                var pCores = topology.Cores.Where(c => c.CoreType == "P-Core").ToList();
-                var eCores = topology.Cores.Where(c => c.CoreType == "E-Core").ToList();
+                var pCores = topology.PCores;
+                var eCores = topology.ECores;
 
                 foreach (var sensor in cpu.Sensors)
                 {
@@ -310,9 +317,9 @@ public class HardwareEngine : IDisposable
                                 snap.CpuTotalUtil = val;
                             else
                             {
-                                var matchPE = System.Text.RegularExpressions.Regex.Match(sensor.Name, @"(P|E)-Core #(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-                                var matchThread = System.Text.RegularExpressions.Regex.Match(sensor.Name, @"CPU Core #(\d+)\s+Thread #(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-                                var matchCore = System.Text.RegularExpressions.Regex.Match(sensor.Name, @"CPU Core #(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                                var matchPE = s_peCoreRegex.Match(sensor.Name);
+                                var matchThread = s_cpuCoreThreadRegex.Match(sensor.Name);
+                                var matchCore = s_cpuCoreRegex.Match(sensor.Name);
 
                                 if (matchPE.Success)
                                 {
@@ -397,8 +404,8 @@ public class HardwareEngine : IDisposable
                             }
                             else
                             {
-                                var matchPE = System.Text.RegularExpressions.Regex.Match(sensor.Name, @"(P|E)-Core #(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-                                var matchCore = System.Text.RegularExpressions.Regex.Match(sensor.Name, @"CPU Core #(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                                var matchPE = s_peCoreRegex.Match(sensor.Name);
+                                var matchCore = s_cpuCoreRegex.Match(sensor.Name);
                                 if (matchPE.Success)
                                 {
                                     bool isP = matchPE.Groups[1].Value.Equals("P", StringComparison.OrdinalIgnoreCase);
@@ -449,8 +456,8 @@ public class HardwareEngine : IDisposable
                         case SensorType.Clock:
                             if (sensor.Name.Contains("Core", StringComparison.OrdinalIgnoreCase))
                             {
-                                var matchPE = System.Text.RegularExpressions.Regex.Match(sensor.Name, @"(P|E)-Core #(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-                                var matchCore = System.Text.RegularExpressions.Regex.Match(sensor.Name, @"CPU Core #(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                                var matchPE = s_peCoreRegex.Match(sensor.Name);
+                                var matchCore = s_cpuCoreRegex.Match(sensor.Name);
                                 if (matchPE.Success)
                                 {
                                     bool isP = matchPE.Groups[1].Value.Equals("P", StringComparison.OrdinalIgnoreCase);
@@ -591,9 +598,9 @@ public class HardwareEngine : IDisposable
                 }
 
             // Ensure All Sensors Matrix contains Package Temperature, RAPL Power, Clocks, and VID
-            if (!allSensors.Any(s => s.Name.Equals("CPU Package", StringComparison.OrdinalIgnoreCase) && s.Category.Contains("Temperature")))
+            if (!allSensors.Any(s => s.Name.Equals("CPU Package", StringComparison.OrdinalIgnoreCase) && s.Category.StartsWith("CPU Thermal", StringComparison.OrdinalIgnoreCase)))
             {
-                RecordSensor("CPU Thermals", "CPU Package", snap.CpuPackageTemp, "°C", allSensors, snap.CpuPackageTempProvenance);
+                RecordSensor("CPU Thermals (DTS)", "CPU Package", snap.CpuPackageTemp, "°C", allSensors, snap.CpuPackageTempProvenance);
             }
             if (!allSensors.Any(s => s.Name.Equals("CPU Package Power", StringComparison.OrdinalIgnoreCase) && s.Category.Contains("Power")))
             {

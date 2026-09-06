@@ -33,6 +33,8 @@ public class NetworkTracker : IDisposable
     private string _lastPrimaryName = "No Network";
     private string _lastPrimaryIp = "";
 
+    private const uint DefaultDestAddr = 0x08080808; // 8.8.8.8 in network byte order
+
     [DllImport("iphlpapi.dll", ExactSpelling = true)]
     private static extern int GetBestInterface(uint destAddr, out uint bestIfIndex);
 
@@ -40,8 +42,7 @@ public class NetworkTracker : IDisposable
     {
         try
         {
-            uint dest = BitConverter.ToUInt32(IPAddress.Parse("8.8.8.8").GetAddressBytes(), 0);
-            if (GetBestInterface(dest, out uint idx) == 0)
+            if (GetBestInterface(DefaultDestAddr, out uint idx) == 0)
                 return (int)idx;
         }
         catch { }

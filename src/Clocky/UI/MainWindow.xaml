@@ -1626,6 +1626,24 @@
                         <DataGrid Grid.Row="1" x:Name="GridAllProcesses" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" IsReadOnly="True" CanUserResizeColumns="True" CanUserReorderColumns="True" HeadersVisibility="Column" GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="{DynamicResource BrushGridLine}" Background="Transparent" BorderThickness="0" Sorting="GridAllProcesses_Sorting" RowHeight="24" SelectionUnit="FullRow" ScrollViewer.HorizontalScrollBarVisibility="Auto"
                                   RowDetailsVisibilityMode="VisibleWhenSelected"
                                   VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling" ScrollViewer.CanContentScroll="True" EnableRowVirtualization="True">
+                            <DataGrid.RowStyle>
+                                <Style TargetType="{x:Type DataGridRow}">
+                                    <Setter Property="Background" Value="{DynamicResource BrushCardBg}"/>
+                                    <Setter Property="Foreground" Value="{DynamicResource BrushTextPrimary}"/>
+                                    <Style.Triggers>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter Property="Background" Value="{DynamicResource BrushAccentCobalt}"/>
+                                            <Setter Property="Foreground" Value="#FFFFFF"/>
+                                        </Trigger>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="{DynamicResource BrushCardSunken}"/>
+                                        </Trigger>
+                                        <DataTrigger Binding="{Binding HasChildren}" Value="False">
+                                            <Setter Property="DetailsVisibility" Value="Collapsed"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </DataGrid.RowStyle>
                             <DataGrid.RowDetailsTemplate>
                                 <DataTemplate>
                                     <Border Margin="24,2,8,6" Padding="8,6" Background="{DynamicResource BrushCardSunken}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" CornerRadius="6"

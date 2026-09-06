@@ -53,6 +53,7 @@ public static class GlobalExceptionHandler
     {
         lock (_lock)
         {
+            DiagnosticRingBuffer.Log(sourceContext, ex);
             string logPath = LogCrashToFile(ex, sourceContext);
 
             if (_isShowingDialog) return;

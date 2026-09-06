@@ -15,22 +15,24 @@ public static class StartupHelper
 
     public static bool IsStartupEnabled()
     {
-        // 1. Primary check: Windows Task Scheduler COM API (in-process, no process spawn)
+        dynamic? scheduler = null;
+        dynamic? rootFolder = null;
+        dynamic? task = null;
         try
         {
             Type? schedulerType = Type.GetTypeFromProgID("Schedule.Service");
             if (schedulerType != null)
             {
-                dynamic? scheduler = Activator.CreateInstance(schedulerType);
+                scheduler = Activator.CreateInstance(schedulerType);
                 if (scheduler != null)
                 {
                     scheduler.Connect();
-                    dynamic rootFolder = scheduler.GetFolder(@"\");
+                    rootFolder = scheduler.GetFolder(@"\");
                     if (rootFolder != null)
                     {
                         try
                         {
-                            dynamic task = rootFolder.GetTask(TaskName);
+                            task = rootFolder.GetTask(TaskName);
                             if (task is not null)
                             {
                                 bool isEnabled = task.Enabled;
@@ -48,6 +50,12 @@ public static class StartupHelper
         catch (Exception ex)
         {
             DiagnosticRingBuffer.Log("StartupHelper:IsStartupEnabledCom", ex);
+        }
+        finally
+        {
+            if (task != null) { try { Marshal.ReleaseComObject(task); } catch { } }
+            if (rootFolder != null) { try { Marshal.ReleaseComObject(rootFolder); } catch { } }
+            if (scheduler != null) { try { Marshal.ReleaseComObject(scheduler); } catch { } }
         }
 
         // 2. Secondary check: schtasks.exe CLI fallback
@@ -108,19 +116,22 @@ public static class StartupHelper
 
                 // Attempt in-process Task Scheduler COM registration (zero temporary disk files)
                 bool comSucceeded = false;
+                dynamic? scheduler = null;
+                dynamic? rootFolder = null;
+                dynamic? taskDef = null;
                 try
                 {
                     Type? schedulerType = Type.GetTypeFromProgID("Schedule.Service");
                     if (schedulerType != null)
                     {
-                        dynamic? scheduler = Activator.CreateInstance(schedulerType);
+                        scheduler = Activator.CreateInstance(schedulerType);
                         if (scheduler != null)
                         {
                             scheduler.Connect();
-                            dynamic rootFolder = scheduler.GetFolder(@"\");
+                            rootFolder = scheduler.GetFolder(@"\");
                             if (rootFolder != null)
                             {
-                                dynamic taskDef = scheduler.NewTask(0);
+                                taskDef = scheduler.NewTask(0);
                                 taskDef.RegistrationInfo.Description = "Clocky Hardware Telemetry Auto-Start";
 
                                 // Trigger: Logon (TASK_TRIGGER_LOGON = 9)
@@ -158,6 +169,12 @@ public static class StartupHelper
                 catch (Exception ex)
                 {
                     DiagnosticRingBuffer.Log("StartupHelper:SetStartupCom", ex);
+                }
+                finally
+                {
+                    if (taskDef != null) { try { Marshal.ReleaseComObject(taskDef); } catch { } }
+                    if (rootFolder != null) { try { Marshal.ReleaseComObject(rootFolder); } catch { } }
+                    if (scheduler != null) { try { Marshal.ReleaseComObject(scheduler); } catch { } }
                 }
 
                 if (!comSucceeded)
@@ -237,16 +254,18 @@ public static class StartupHelper
             {
                 // Disable startup: Try COM API first
                 bool comDeleted = false;
+                dynamic? scheduler = null;
+                dynamic? rootFolder = null;
                 try
                 {
                     Type? schedulerType = Type.GetTypeFromProgID("Schedule.Service");
                     if (schedulerType != null)
                     {
-                        dynamic? scheduler = Activator.CreateInstance(schedulerType);
+                        scheduler = Activator.CreateInstance(schedulerType);
                         if (scheduler != null)
                         {
                             scheduler.Connect();
-                            dynamic rootFolder = scheduler.GetFolder(@"\");
+                            rootFolder = scheduler.GetFolder(@"\");
                             if (rootFolder != null)
                             {
                                 try
@@ -266,6 +285,11 @@ public static class StartupHelper
                 catch (Exception ex)
                 {
                     DiagnosticRingBuffer.Log("StartupHelper:DeleteStartupCom", ex);
+                }
+                finally
+                {
+                    if (rootFolder != null) { try { Marshal.ReleaseComObject(rootFolder); } catch { } }
+                    if (scheduler != null) { try { Marshal.ReleaseComObject(scheduler); } catch { } }
                 }
 
                 if (!comDeleted)

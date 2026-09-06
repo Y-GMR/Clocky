@@ -17,6 +17,13 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 ### Changed
 - Refactored `StartupHelper` to prioritize native Task Scheduler COM registration before falling back to `schtasks.exe`.
 - Added provenance tooltips to CPU package temperature and voltage telemetry displays in CPU Observability view.
+- Pre-cached physical core arrays (`PCores`, `ECores`) in `CpuTopologyHelper` and pre-compiled CPU sensor regexes, eliminating periodic LINQ allocations and string matching overhead in `HardwareEngine`.
+- Optimized `ProcessTracker` GPU counter cache by pairing counters directly with parsed process IDs and eliminated multi-instance grouping allocations via shared empty buffers and single-pass sorting.
+
+### Fixed
+- Added deterministic COM RCW cleanup via `Marshal.ReleaseComObject` in `StartupHelper` to prevent Task Scheduler COM handle retention.
+- Added conditional suppression of row detail layout artifacts in Process Observability Matrix for single-instance processes.
+- Fixed `run_clocky.bat` relative path resolution to search root `dist/` directory before build output directories.
 
 ---
 

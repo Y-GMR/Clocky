@@ -54,7 +54,7 @@ public static class UpdateManager
         }
         catch { }
 
-        return new Version(1, 0, 7);
+        return new Version(1, 3, 0);
     }
 
     public static async Task<(bool HasUpdate, UpdateManifest? Manifest, string? Message)> CheckForUpdatesAsync(string feedUrl)

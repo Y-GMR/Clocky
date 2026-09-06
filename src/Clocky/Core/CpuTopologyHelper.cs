@@ -23,6 +23,8 @@ public class CpuTopology
     public int ECoreCount { get; set; }
     public List<CpuCoreInfo> Cores { get; set; } = new();
     public Dictionary<int, CpuCoreInfo> ThreadToCoreMap { get; set; } = new();
+    public List<CpuCoreInfo> PCores { get; set; } = new();
+    public List<CpuCoreInfo> ECores { get; set; } = new();
 }
 
 public static class CpuTopologyHelper
@@ -165,6 +167,9 @@ public static class CpuTopologyHelper
                 }
             }
 
+            topology.PCores = topology.Cores.Where(c => c.CoreType == "P-Core").ToList();
+            topology.ECores = topology.Cores.Where(c => c.CoreType == "E-Core").ToList();
+
             return topology;
         }
         catch
@@ -200,6 +205,9 @@ public static class CpuTopologyHelper
             topology.Cores.Add(core);
             topology.ThreadToCoreMap[i] = core;
         }
+
+        topology.PCores = new List<CpuCoreInfo>(topology.Cores);
+        topology.ECores = new List<CpuCoreInfo>();
 
         return topology;
     }

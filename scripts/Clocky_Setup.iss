@@ -1,6 +1,6 @@
 ; Inno Setup Script for Clocky Standalone Application
 #define MyAppName "Clocky"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.3.0"
 #define MyAppPublisher "Iwang Petra Dheerendra"
 #define MyAppURL "https://github.com/Y-GMR/Clocky"
 #define MyAppExeName "Clocky.exe"

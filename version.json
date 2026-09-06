@@ -1,8 +1,8 @@
-{
-  "version": "1.3.0",
-  "releaseDate": "2026-09-05",
-  "changelog": "Global Sensor Provenance Architecture, child process instance inspection, GPU engine health detection, and native Task Scheduler COM registration.",
-  "downloadUrl": "https://github.com/Y-GMR/Clocky/releases/latest/download/Clocky.exe",
-  "mandatory": false,
-  "sha256": "9f868d72efa72ee7ff91aaba4d20e6f8e7471523a8bc350d5ad6b6bff337aafd"
+﻿{
+    "version":  "1.3.0",
+    "releaseDate":  "2026-09-05",
+    "changelog":  "Global Sensor Provenance Architecture, child process instance inspection, GPU engine health detection, and native Task Scheduler COM registration.",
+    "downloadUrl":  "https://github.com/Y-GMR/Clocky/releases/latest/download/Clocky.exe",
+    "mandatory":  false,
+    "sha256":  "b128817b4e738ffbc41904aeba2d98c95ff98bfa947771c5b8a3ea5944bcdb98"
 }

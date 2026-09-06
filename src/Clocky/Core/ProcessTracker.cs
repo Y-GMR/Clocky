@@ -33,8 +33,9 @@ public class ProcessTracker : IDisposable
     private HashSet<int> _cachedNetPids = new();
     private DateTime _lastNetPidRefresh = DateTime.MinValue;
 
-    // Cache of GPU Performance Counters: InstanceName -> Counter (refreshed every 15s)
-    private readonly Dictionary<string, PerformanceCounter> _gpuCounters = new();
+    // Cache of GPU Performance Counters: InstanceName -> (Counter, Pid) (refreshed every 15s)
+    private readonly Dictionary<string, (PerformanceCounter Counter, int Pid)> _gpuCounters = new();
+    private static readonly List<ProcessInstanceItem> s_emptyChildren = new(0);
     private DateTime _lastGpuCounterRefresh = DateTime.MinValue;
 
     public bool DetailedMode { get; set; } = false;
@@ -112,9 +113,9 @@ public class ProcessTracker : IDisposable
                 Marshal.FreeHGlobal(_nativeBuffer);
                 _nativeBuffer = IntPtr.Zero;
             }
-            foreach (var ctr in _gpuCounters.Values)
+            foreach (var entry in _gpuCounters.Values)
             {
-                try { ctr.Dispose(); } catch { }
+                try { entry.Counter.Dispose(); } catch { }
             }
             _gpuCounters.Clear();
 
@@ -279,10 +280,11 @@ public class ProcessTracker : IDisposable
                 .GroupBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
                 .Select(g =>
                 {
-                    var primary = g.OrderByDescending(p => p.WorkingSetBytes).First();
-                    int count = g.Count();
+                    var sorted = g.OrderByDescending(p => p.WorkingSetBytes).ToList();
+                    var primary = sorted[0];
+                    int count = sorted.Count;
                     var children = count > 1
-                        ? g.OrderByDescending(p => p.WorkingSetBytes)
+                        ? sorted
                            .Select(p => new ProcessInstanceItem
                            {
                                Pid = p.Pid,
@@ -301,25 +303,25 @@ public class ProcessTracker : IDisposable
                                ThreadCount = p.ThreadCount,
                                Status = p.Status
                            }).ToList()
-                        : new List<ProcessInstanceItem>();
+                        : s_emptyChildren;
 
                     return new ProcessItem
                     {
                         Pid = primary.Pid,
                         Name = primary.Name,
                         InstanceCount = count,
-                        CpuPercent = (float)Math.Clamp(g.Sum(p => (double)p.CpuPercent), 0.0, 100.0),
-                        GpuPercent = g.Sum(p => p.GpuPercent),
-                        GpuVramMb = g.Sum(p => p.GpuVramMb),
-                        PrivateMemoryBytes = g.Sum(p => p.PrivateMemoryBytes),
-                        WorkingSetBytes = g.Sum(p => p.WorkingSetBytes),
-                        DiskReadMBps = g.Sum(p => p.DiskReadMBps),
-                        DiskWriteMBps = g.Sum(p => p.DiskWriteMBps),
-                        EstablishedSockets = g.Sum(p => p.EstablishedSockets),
-                        ActiveSockets = g.Sum(p => p.ActiveSockets),
-                        NetDownSpeedKBps = g.Sum(p => p.NetDownSpeedKBps),
-                        NetUpSpeedKBps = g.Sum(p => p.NetUpSpeedKBps),
-                        ThreadCount = g.Sum(p => p.ThreadCount),
+                        CpuPercent = (float)Math.Clamp(sorted.Sum(p => (double)p.CpuPercent), 0.0, 100.0),
+                        GpuPercent = sorted.Sum(p => p.GpuPercent),
+                        GpuVramMb = sorted.Sum(p => p.GpuVramMb),
+                        PrivateMemoryBytes = sorted.Sum(p => p.PrivateMemoryBytes),
+                        WorkingSetBytes = sorted.Sum(p => p.WorkingSetBytes),
+                        DiskReadMBps = sorted.Sum(p => p.DiskReadMBps),
+                        DiskWriteMBps = sorted.Sum(p => p.DiskWriteMBps),
+                        EstablishedSockets = sorted.Sum(p => p.EstablishedSockets),
+                        ActiveSockets = sorted.Sum(p => p.ActiveSockets),
+                        NetDownSpeedKBps = sorted.Sum(p => p.NetDownSpeedKBps),
+                        NetUpSpeedKBps = sorted.Sum(p => p.NetUpSpeedKBps),
+                        ThreadCount = sorted.Sum(p => p.ThreadCount),
                         Status = "Running",
                         Children = children
                     };
@@ -536,8 +538,11 @@ public class ProcessTracker : IDisposable
                     var toRemove = _gpuCounters.Keys.Where(k => !activeInsts.Contains(k)).ToList();
                     foreach (var k in toRemove)
                     {
-                        _gpuCounters[k].Dispose();
-                        _gpuCounters.Remove(k);
+                        if (_gpuCounters.TryGetValue(k, out var entry))
+                        {
+                            try { entry.Counter.Dispose(); } catch { }
+                            _gpuCounters.Remove(k);
+                        }
                     }
 
                     foreach (var inst in activeInsts)
@@ -546,9 +551,23 @@ public class ProcessTracker : IDisposable
                         {
                             try
                             {
-                                var ctr = new PerformanceCounter("GPU Engine", "Utilization Percentage", inst, true);
-                                ctr.NextValue();
-                                _gpuCounters[inst] = ctr;
+                                int pid = -1;
+                                int pidStart = inst.IndexOf("pid_");
+                                if (pidStart >= 0)
+                                {
+                                    int pidEnd = inst.IndexOf('_', pidStart + 4);
+                                    if (pidEnd > pidStart)
+                                    {
+                                        int.TryParse(inst.Substring(pidStart + 4, pidEnd - pidStart - 4), out pid);
+                                    }
+                                }
+
+                                if (pid > 0)
+                                {
+                                    var ctr = new PerformanceCounter("GPU Engine", "Utilization Percentage", inst, true);
+                                    ctr.NextValue();
+                                    _gpuCounters[inst] = (ctr, pid);
+                                }
                             }
                             catch (Exception ex)
                             {
@@ -564,28 +583,14 @@ public class ProcessTracker : IDisposable
                 }
             }
 
-            foreach (var (inst, ctr) in _gpuCounters)
+            foreach (var entry in _gpuCounters.Values)
             {
                 try
                 {
-                    float val = ctr.NextValue();
-                    if (val > 0.01f)
+                    float val = entry.Counter.NextValue();
+                    if (val > 0.01f && processMap.TryGetValue(entry.Pid, out var item))
                     {
-                        int pidStart = inst.IndexOf("pid_");
-                        if (pidStart >= 0)
-                        {
-                            int pidEnd = inst.IndexOf('_', pidStart + 4);
-                            if (pidEnd > pidStart)
-                            {
-                                if (int.TryParse(inst.Substring(pidStart + 4, pidEnd - pidStart - 4), out int pid))
-                                {
-                                    if (processMap.TryGetValue(pid, out var item))
-                                    {
-                                        item.GpuPercent += val;
-                                    }
-                                }
-                            }
-                        }
+                        item.GpuPercent += val;
                     }
                 }
                 catch (Exception ex)
