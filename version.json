@@ -4,5 +4,5 @@
   "changelog": "AMD Zen thermal and core detection, UI model name trimming and tooltips, zero synthetic fallback enforcement, and ProcessTracker resource disposal.",
   "downloadUrl": "https://github.com/Y-GMR/Clocky/releases/latest/download/Clocky.exe",
   "mandatory": false,
-  "sha256": "daf0c9f6d2e8f80d0b98616f5349e5e34eae38fbaf6f3b8e5e809a4ecbee7716"
+  "sha256": "a1ad8574f658aa46f15396fa9a1a36f3547a8c53344f70d6c9fbe491efd90bec"
 }
