@@ -520,7 +520,13 @@ public class ProcessTracker : IDisposable
 
                     var cat = new PerformanceCounterCategory("GPU Engine");
                     var insts = cat.GetInstanceNames();
-                    var activeInsts = new HashSet<string>(insts.Where(i => i.Contains("pid_") && (i.Contains("engtype_3D") || i.Contains("engtype_Compute"))));
+                    var activeInsts = new HashSet<string>(insts.Where(i => i.Contains("pid_") && (
+                        i.Contains("engtype_3D") ||
+                        i.Contains("engtype_Compute") ||
+                        i.Contains("engtype_VideoDecode") ||
+                        i.Contains("engtype_VideoEncode") ||
+                        i.Contains("engtype_VideoProcessing") ||
+                        i.Contains("engtype_Copy"))));
 
                     if (insts.Length > 0 && activeInsts.Count == 0)
                     {

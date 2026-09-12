@@ -65,7 +65,7 @@ public class HardwareEngine : IDisposable
     private static readonly System.Text.RegularExpressions.Regex s_cpuCoreThreadRegex =
         new(@"CPU Core #(\d+)\s+Thread #(\d+)", System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
     private static readonly System.Text.RegularExpressions.Regex s_cpuCoreRegex =
-        new(@"CPU Core #(\d+)", System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        new(@"^(?:CPU\s+)?Core\s*#?(\d+)$", System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
     private static (string BusType, bool IsHdd, bool IsRemovable) GetDriveMediaDescriptor(string driveLetter)
     {
@@ -300,14 +300,56 @@ public class HardwareEngine : IDisposable
                 {
                     if (!sensor.Value.HasValue) continue;
                     var val = sensor.Value.Value;
-                    var prov = sensor.SensorType switch
+                    SensorProvenance prov;
+                    switch (sensor.SensorType)
                     {
-                        SensorType.Voltage => SensorProvenance.NativeMSR,
-                        SensorType.Power => SensorProvenance.NativeMSR,
-                        SensorType.Clock => SensorProvenance.NativeMSR,
-                        SensorType.Temperature => SensorProvenance.DriverLHM,
-                        _ => SensorProvenance.DriverLHM
-                    };
+                        case SensorType.Temperature:
+                            if (sensor.Name.Equals("CPU Package", StringComparison.OrdinalIgnoreCase) ||
+                                sensor.Name.Equals("Package", StringComparison.OrdinalIgnoreCase) ||
+                                sensor.Name.Equals("Core (Tctl/Tdie)", StringComparison.OrdinalIgnoreCase) ||
+                                sensor.Name.Equals("Tctl/Tdie", StringComparison.OrdinalIgnoreCase) ||
+                                sensor.Name.Equals("Tdie", StringComparison.OrdinalIgnoreCase) ||
+                                sensor.Name.Equals("Tctl", StringComparison.OrdinalIgnoreCase) ||
+                                sensor.Name.Contains("CCD", StringComparison.OrdinalIgnoreCase) ||
+                                s_peCoreRegex.IsMatch(sensor.Name) ||
+                                s_cpuCoreRegex.IsMatch(sensor.Name))
+                            {
+                                prov = SensorProvenance.NativeMSR;
+                            }
+                            else if (sensor.Name.Contains("Core Max", StringComparison.OrdinalIgnoreCase) ||
+                                     sensor.Name.Contains("Core Average", StringComparison.OrdinalIgnoreCase) ||
+                                     sensor.Name.Contains("Core Avg", StringComparison.OrdinalIgnoreCase))
+                            {
+                                prov = SensorProvenance.FallbackApproximation;
+                            }
+                            else
+                            {
+                                prov = SensorProvenance.DriverLHM;
+                            }
+                            break;
+
+                        case SensorType.Voltage:
+                            prov = (sensor.Name.Contains("Vcore", StringComparison.OrdinalIgnoreCase) || sensor.Name.Contains("Motherboard", StringComparison.OrdinalIgnoreCase))
+                                ? SensorProvenance.MotherboardSuperIO
+                                : SensorProvenance.NativeMSR;
+                            break;
+
+                        case SensorType.Power:
+                            prov = SensorProvenance.NativeMSR;
+                            break;
+
+                        case SensorType.Clock:
+                            prov = SensorProvenance.DriverLHM;
+                            break;
+
+                        case SensorType.Load:
+                            prov = SensorProvenance.PerformanceCounter;
+                            break;
+
+                        default:
+                            prov = SensorProvenance.DriverLHM;
+                            break;
+                    }
                     RecordSensor(GetCpuCategory(sensor.SensorType), sensor.Name, val, GetSensorUnit(sensor.SensorType), allSensors, prov);
 
                     switch (sensor.SensorType)
@@ -374,11 +416,22 @@ public class HardwareEngine : IDisposable
                             break;
 
                         case SensorType.Temperature:
+                            bool isAmdPackage = sensor.Name.Equals("Core (Tctl/Tdie)", StringComparison.OrdinalIgnoreCase) ||
+                                                sensor.Name.Equals("Tctl/Tdie", StringComparison.OrdinalIgnoreCase) ||
+                                                sensor.Name.Equals("Tdie", StringComparison.OrdinalIgnoreCase) ||
+                                                sensor.Name.Equals("Tctl", StringComparison.OrdinalIgnoreCase) ||
+                                                sensor.Name.StartsWith("CCD1", StringComparison.OrdinalIgnoreCase) ||
+                                                sensor.Name.StartsWith("CPU CCD", StringComparison.OrdinalIgnoreCase);
+
                             if (sensor.Name.Equals("CPU Package", StringComparison.OrdinalIgnoreCase) ||
-                                sensor.Name.Equals("Package", StringComparison.OrdinalIgnoreCase))
+                                sensor.Name.Equals("Package", StringComparison.OrdinalIgnoreCase) ||
+                                isAmdPackage)
                             {
-                                snap.CpuPackageTemp = val;
-                                snap.CpuPackageTempProvenance = SensorProvenance.NativeMSR;
+                                if (snap.CpuPackageTemp == 0 || !sensor.Name.Contains("CCD", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    snap.CpuPackageTemp = val;
+                                    snap.CpuPackageTempProvenance = SensorProvenance.NativeMSR;
+                                }
                             }
                             else if (sensor.Name.Contains("Core Max", StringComparison.OrdinalIgnoreCase))
                             {
@@ -394,12 +447,13 @@ public class HardwareEngine : IDisposable
                             {
                                 snap.CpuCoreAvgTemp = val;
                             }
-                            else if (sensor.Name.Contains("Tdie", StringComparison.OrdinalIgnoreCase))
+                            else if (sensor.Name.Contains("Tdie", StringComparison.OrdinalIgnoreCase) ||
+                                     sensor.Name.Contains("Tctl", StringComparison.OrdinalIgnoreCase))
                             {
                                 if (snap.CpuPackageTemp == 0)
                                 {
                                     snap.CpuPackageTemp = val;
-                                    snap.CpuPackageTempProvenance = SensorProvenance.DriverLHM;
+                                    snap.CpuPackageTempProvenance = SensorProvenance.NativeMSR;
                                 }
                             }
                             else
@@ -556,6 +610,15 @@ public class HardwareEngine : IDisposable
                         snap.CpuPackageTemp = fallbackTemp;
                         snap.CpuPackageTempProvenance = SensorProvenance.MotherboardSuperIO;
                     }
+                    else
+                    {
+                        float acpiTemp = GetAcpiThermalZoneTemp();
+                        if (acpiTemp > 0)
+                        {
+                            snap.CpuPackageTemp = acpiTemp;
+                            snap.CpuPackageTempProvenance = SensorProvenance.MotherboardSuperIO;
+                        }
+                    }
                 }
 
                 // Motherboard Voltage Fallback if CPU MSR VID is unavailable
@@ -593,7 +656,7 @@ public class HardwareEngine : IDisposable
                         Load = coreLoads.GetValueOrDefault(i, 0f),
                         Temp = coreTemps.GetValueOrDefault(i, 0f),
                         Clock = coreClocks.GetValueOrDefault(i, 0f),
-                        Voltage = snap.CpuVoltage
+                        Voltage = 0f
                     });
                 }
 
@@ -727,14 +790,6 @@ public class HardwareEngine : IDisposable
                             break;
                     }
                 }
-
-                if (snap.GpuHotspotTemp == 0 && snap.GpuMemoryTemp > 0)
-                    snap.GpuHotspotTemp = snap.GpuMemoryTemp;
-
-                if (snap.Gpu3dUtil == 0 && snap.GpuCoreUtil > 0)
-                    snap.Gpu3dUtil = snap.GpuCoreUtil;
-                else if (snap.GpuCoreUtil == 0 && snap.Gpu3dUtil > 0)
-                    snap.GpuCoreUtil = snap.Gpu3dUtil;
 
                 if (snap.GpuVramTotalGb > 0 && snap.GpuVramUsedGb > 0)
                     snap.GpuVramPercent = (snap.GpuVramUsedGb / snap.GpuVramTotalGb) * 100f;
@@ -1205,10 +1260,40 @@ public class HardwareEngine : IDisposable
         return (false, true, 0, null);
     }
 
+    private static float GetAcpiThermalZoneTemp()
+    {
+        try
+        {
+            using var searcher = new System.Management.ManagementObjectSearcher(
+                @"root\cimv2",
+                "SELECT Temperature, HighPrecisionTemperature FROM Win32_PerfFormattedData_Counters_ThermalZoneInformation");
+            foreach (var obj in searcher.Get())
+            {
+                if (obj["HighPrecisionTemperature"] is uint hp && hp > 2732)
+                {
+                    float degC = (hp - 2732f) / 10f;
+                    if (degC >= 20f && degC <= 115f) return degC;
+                }
+                if (obj["Temperature"] is uint k && k > 273)
+                {
+                    float degC = k - 273.15f;
+                    if (degC >= 20f && degC <= 115f) return degC;
+                }
+            }
+        }
+        catch { }
+        return 0f;
+    }
+
     public void Dispose()
     {
         _timer.Stop();
         _timer.Dispose();
+        try
+        {
+            _processTracker.Dispose();
+        }
+        catch { }
         try
         {
             _diskIoTracker.Dispose();

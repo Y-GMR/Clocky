@@ -1395,11 +1395,13 @@ public partial class MainWindow : Window
         {
             string shortCpu = !string.IsNullOrEmpty(snap.CpuName) ? SystemHardwareHelper.GetShortCpuName(snap.CpuName) : "CPU";
             NavCpuText.Text = $"CPU ({shortCpu})";
+            NavCpuText.ToolTip = !string.IsNullOrEmpty(snap.CpuName) ? snap.CpuName : "CPU";
         }
         if (NavGpuText != null)
         {
             string shortGpu = !string.IsNullOrEmpty(snap.GpuName) ? SystemHardwareHelper.GetShortGpuName(snap.GpuName) : "GPU";
             NavGpuText.Text = $"GPU ({shortGpu})";
+            NavGpuText.ToolTip = !string.IsNullOrEmpty(snap.GpuName) ? snap.GpuName : "GPU";
         }
 
         // 1. Top Responsive 4 Vitals Bar

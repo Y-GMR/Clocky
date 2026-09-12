@@ -23,6 +23,8 @@ public class CpuTopology
     public int ECoreCount { get; set; }
     public List<CpuCoreInfo> Cores { get; set; } = new();
     public Dictionary<int, CpuCoreInfo> ThreadToCoreMap { get; set; } = new();
+    public bool IsFallback { get; set; } = false;
+    public SensorProvenance Provenance { get; set; } = SensorProvenance.NativeMSR;
     public List<CpuCoreInfo> PCores { get; set; } = new();
     public List<CpuCoreInfo> ECores { get; set; } = new();
 }
@@ -184,7 +186,11 @@ public static class CpuTopologyHelper
 
     private static CpuTopology FallbackTopology()
     {
-        var topology = new CpuTopology();
+        var topology = new CpuTopology
+        {
+            IsFallback = true,
+            Provenance = SensorProvenance.FallbackApproximation
+        };
         int threadCount = Math.Max(1, Environment.ProcessorCount);
         topology.PhysicalCoreCount = threadCount;
         topology.LogicalProcessorCount = threadCount;

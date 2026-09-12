@@ -4,6 +4,26 @@ All notable changes to Clocky are documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## [1.3.1] - 2026-09-12
+
+### Added
+- Provenance and fallback tracking (`IsFallback`, `Provenance`) in `CpuTopologyHelper.CpuTopology`, explicitly tagging synthetic fallback approximations if native topology queries fail.
+- AMD Zen CPU package temperature matching for `Core (Tctl/Tdie)`, `Tctl/Tdie`, `Tdie`, `Tctl`, `CPU CCD1`, and fallback ACPI thermal zone polling (`Win32_PerfFormattedData_Counters_ThermalZoneInformation`).
+- GPU video and copy engine performance counter tracking (`engtype_VideoDecode`, `engtype_VideoEncode`, `engtype_VideoProcessing`, `engtype_Copy`) in `ProcessTracker.PollGpuCounters`.
+- Full hardware model name tooltips on navigation tabs (`NavCpuText`, `NavGpuText`) and character ellipsis trimming (`TextTrimming="CharacterEllipsis"`).
+
+### Changed
+- Refactored `SystemHardwareHelper.GetShortCpuName` to strip integrated GPU marketing suffixes (e.g. `with Radeon ... Graphics`, `Intel Arc Graphics`) and enforce 20-character bounds with ellipsis.
+- Refactored `SystemHardwareHelper.GetShortGpuName` to truncate at 16 characters with ellipsis.
+
+### Fixed
+- Fixed AMD Zen core sensor matching in `HardwareEngine` by updating core regex to `@"^(?:CPU\s+)?Core\s*#?(\d+)$"`, resolving empty per-core telemetry on Ryzen processors.
+- Fixed sensor provenance alignment between UI headline telemetry and All Sensors matrix, eliminating provenance mismatches for CPU Package Temp, Vcore, and Core Max.
+- Enforced Rule 5 zero synthetic fallbacks by removing GPU Hotspot <- Memory Temp cross-substitution, GPU 3D Util <-> Core Util fallback, and synthetic multi-core clock replication in `SystemHardwareHelper.GetProcessorClocks`.
+- Fixed resource leak in `HardwareEngine.Dispose()` by deterministically invoking `_processTracker.Dispose()`.
+
+---
+
 ## [1.3.0] - 2026-09-05
 
 ### Added

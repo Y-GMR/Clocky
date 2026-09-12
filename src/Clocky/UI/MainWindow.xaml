@@ -586,12 +586,12 @@
 
                                 <!-- TAB 1: CPU TOPOLOGY -->
                                 <RadioButton x:Name="TabCpu" GroupName="NavTabs" Style="{StaticResource CyberdeckTabButton}" Checked="Tab_Checked">
-                                    <TextBlock x:Name="NavCpuText" Text="CPU Topology" FontWeight="Bold" FontSize="12" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="NavCpuText" Text="CPU Topology" FontWeight="Bold" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                                 </RadioButton>
 
                                 <!-- TAB 2: GPU ENGINES -->
                                 <RadioButton x:Name="TabGpu" GroupName="NavTabs" Style="{StaticResource CyberdeckTabButton}" Checked="Tab_Checked">
-                                    <TextBlock x:Name="NavGpuText" Text="GPU Engines" FontWeight="Bold" FontSize="12" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="NavGpuText" Text="GPU Engines" FontWeight="Bold" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                                 </RadioButton>
 
                                 <!-- TAB 3: MEMORY & DISKS -->
@@ -1713,7 +1713,7 @@
                             <Border Grid.Column="0" Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="12" CornerRadius="12">
                                 <StackPanel>
                                     <TextBlock Text="DETECTED CPU SILICON" FontWeight="Bold" Foreground="{DynamicResource BrushTextSecondary}" FontSize="11" Margin="0,0,0,4"/>
-                                    <TextBlock x:Name="TxtDetectedCpuName" Text="CPU" Foreground="{DynamicResource BrushTextPrimary}" FontWeight="SemiBold" FontSize="13"/>
+                                    <TextBlock x:Name="TxtDetectedCpuName" Text="CPU" Foreground="{DynamicResource BrushTextPrimary}" FontWeight="SemiBold" FontSize="13" TextTrimming="CharacterEllipsis"/>
                                     <StackPanel Orientation="Horizontal" Margin="0,6,0,0" VerticalAlignment="Center">
                                         <TextBlock Text="Vendor Architecture: " Foreground="{DynamicResource BrushTextSecondary}" FontSize="11" VerticalAlignment="Center"/>
                                         <Border x:Name="BrdCpuVendorBadge" Background="#0284C7" CornerRadius="10" Padding="6,2" Margin="4,0,0,0">
@@ -1727,7 +1727,7 @@
                             <Border Grid.Column="2" Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="12" CornerRadius="12">
                                 <StackPanel>
                                     <TextBlock Text="DETECTED GPU SILICON" FontWeight="Bold" Foreground="{DynamicResource BrushTextSecondary}" FontSize="11" Margin="0,0,0,4"/>
-                                    <TextBlock x:Name="TxtDetectedGpuName" Text="GPU" Foreground="{DynamicResource BrushTextPrimary}" FontWeight="SemiBold" FontSize="13"/>
+                                    <TextBlock x:Name="TxtDetectedGpuName" Text="GPU" Foreground="{DynamicResource BrushTextPrimary}" FontWeight="SemiBold" FontSize="13" TextTrimming="CharacterEllipsis"/>
                                     <StackPanel Orientation="Horizontal" Margin="0,6,0,0" VerticalAlignment="Center">
                                         <TextBlock Text="Vendor Architecture: " Foreground="{DynamicResource BrushTextSecondary}" FontSize="11" VerticalAlignment="Center"/>
                                         <Border x:Name="BrdGpuVendorBadge" Background="#16A34A" CornerRadius="10" Padding="6,2" Margin="4,0,0,0">

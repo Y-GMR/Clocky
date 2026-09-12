@@ -135,7 +135,14 @@ public static class SystemHardwareHelper
             .Replace(" processor", "")
             .Trim();
 
-        return name.Length > 20 ? name.Substring(0, 20).Trim() : name;
+        // Strip integrated GPU marketing suffixes (e.g. "with Radeon 740M Graphics", "w/ Radeon Graphics")
+        name = System.Text.RegularExpressions.Regex.Replace(
+            name,
+            @"\s*(?:with|w/)\s+(?:Radeon|Intel|AMD)?(?:\s+[\w\d]+)*\s+Graphics.*$",
+            "",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase).Trim();
+
+        return name.Length > 20 ? name.Substring(0, 18).TrimEnd() + "..." : name;
     }
 
     public static string GetShortGpuName(string? fullName)
@@ -153,7 +160,7 @@ public static class SystemHardwareHelper
             .Replace(" Graphics", "")
             .Trim();
 
-        return name.Length > 16 ? name.Substring(0, 16).Trim() : name;
+        return name.Length > 16 ? name.Substring(0, 14).TrimEnd() + "..." : name;
     }
 
     private static string CleanManufacturerName(string mfr)
@@ -310,21 +317,8 @@ public static class SystemHardwareHelper
                 {
                     coreClocks[kvp.Key] = (float)Math.Round(baseMhz * (p / 100.0f), 0);
                 }
-                else
-                {
-                    coreClocks[kvp.Key] = totalDynMhz;
-                }
             }
-            catch
-            {
-                coreClocks[kvp.Key] = totalDynMhz;
-            }
-        }
-
-        if (coreClocks.Count == 0)
-        {
-            int count = Environment.ProcessorCount;
-            for (int i = 0; i < count; i++) coreClocks[i] = totalDynMhz;
+            catch { }
         }
 
         return (totalDynMhz, coreClocks);
