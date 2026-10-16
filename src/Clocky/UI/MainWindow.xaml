@@ -12,7 +12,7 @@
         WindowStartupLocation="CenterScreen">
     
     <Window.Resources>
-        <!-- DYNAMIC SKEUOMORPHIC & DISCORD PALETTE BRUSHES -->
+        <!-- DYNAMIC SKEUOMORPHIC PALETTE BRUSHES -->
         <SolidColorBrush x:Key="BrushWindowBg" Color="#1E2124"/>
         <SolidColorBrush x:Key="BrushPanelBg" Color="#282B30"/>
         <SolidColorBrush x:Key="BrushCardBg" Color="#36393E"/>
@@ -331,12 +331,12 @@
             <Setter Property="Background" Value="{DynamicResource BrushCardBg}"/>
             <Setter Property="Foreground" Value="{DynamicResource BrushTextPrimary}"/>
             <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource BrushCardSunken}"/>
+                </Trigger>
                 <Trigger Property="IsSelected" Value="True">
                     <Setter Property="Background" Value="{DynamicResource BrushAccentCobalt}"/>
                     <Setter Property="Foreground" Value="#FFFFFF"/>
-                </Trigger>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="{DynamicResource BrushCardSunken}"/>
                 </Trigger>
             </Style.Triggers>
         </Style>
@@ -640,7 +640,7 @@
                 </DockPanel>
 
                 <DataGrid x:Name="GridAllSensors" Grid.Row="1" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" IsReadOnly="True" CanUserSortColumns="True" CanUserResizeColumns="True" CanUserReorderColumns="True" HeadersVisibility="Column" GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="{DynamicResource BrushGridLine}" Background="Transparent" BorderThickness="0" Sorting="GridAllSensors_Sorting" RowHeight="24" SelectionUnit="FullRow" ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                          VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling" ScrollViewer.CanContentScroll="True" EnableRowVirtualization="True">
+                          VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling" ScrollViewer.CanContentScroll="True" EnableRowVirtualization="True" EnableColumnVirtualization="True">
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="Category" Binding="{Binding Category}" SortMemberPath="Category" Width="170" MinWidth="80" MaxWidth="350"/>
                         <DataGridTextColumn Header="Sensor Name" Binding="{Binding Name}" SortMemberPath="Name" Width="320" MinWidth="120"/>
@@ -1024,7 +1024,7 @@
                     <Border Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="5,4" Margin="0,2,3,2">
                         <Grid>
                             <DockPanel VerticalAlignment="Top" Margin="2,0,2,0">
-                                <TextBlock Text="VIDEO DECODE (NVDEC/VCN)" FontWeight="Bold" Foreground="{DynamicResource BrushTextSecondary}" FontSize="9.5"/>
+                                <TextBlock Text="VIDEO DECODE ENGINE" FontWeight="Bold" Foreground="{DynamicResource BrushTextSecondary}" FontSize="9.5"/>
                                 <TextBlock x:Name="TxtGpuDecoderUtil" Text="0.0%" HorizontalAlignment="Right" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas" FontWeight="Bold" FontSize="9.5"/>
                             </DockPanel>
                             <Canvas x:Name="CanvasGpuDecoder" Margin="0,14,0,2" Background="Transparent" ClipToBounds="True"/>
@@ -1045,7 +1045,7 @@
                     <Border Background="{DynamicResource BrushCardBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" Padding="5,4" Margin="3,2,0,2">
                         <Grid>
                             <DockPanel VerticalAlignment="Top" Margin="2,0,2,0">
-                                <TextBlock Text="VIDEO ENCODE (NVENC/AMF)" FontWeight="Bold" Foreground="{DynamicResource BrushTextSecondary}" FontSize="9.5"/>
+                                <TextBlock Text="VIDEO ENCODE ENGINE" FontWeight="Bold" Foreground="{DynamicResource BrushTextSecondary}" FontSize="9.5"/>
                                 <TextBlock x:Name="TxtGpuEncoderUtil" Text="0.0%" HorizontalAlignment="Right" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas" FontWeight="Bold" FontSize="9.5"/>
                             </DockPanel>
                             <Canvas x:Name="CanvasGpuEncoder" Margin="0,14,0,2" Background="Transparent" ClipToBounds="True"/>
@@ -1266,7 +1266,7 @@
                             <StackPanel>
                                 <TextBlock Text="PLATFORM TOTAL (PSYS)" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10"/>
                                 <TextBlock x:Name="TxtPowerPsys" Text="0.0 W" FontSize="18" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas"/>
-                                <TextBlock Text="Intel RAPL MSR 0x65F" Foreground="{DynamicResource BrushTextSecondary}" FontSize="9"/>
+                                <TextBlock x:Name="TxtPowerPsysSub" Text="Platform Energy Telemetry" Foreground="{DynamicResource BrushTextSecondary}" FontSize="9"/>
                             </StackPanel>
                         </Border>
 
@@ -1274,7 +1274,7 @@
                             <StackPanel>
                                 <TextBlock Text="CPU PACKAGE POWER" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10"/>
                                 <TextBlock x:Name="TxtPowerCpu" Text="0.0 W" FontSize="18" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas"/>
-                                <TextBlock Text="IA Cores + System Agent" Foreground="{DynamicResource BrushTextSecondary}" FontSize="9"/>
+                                <TextBlock x:Name="TxtPowerCpuSub" Text="CPU Package Rail" Foreground="{DynamicResource BrushTextSecondary}" FontSize="9"/>
                             </StackPanel>
                         </Border>
 
@@ -1282,7 +1282,7 @@
                             <StackPanel>
                                 <TextBlock Text="GPU TOTAL BOARD" Foreground="{DynamicResource BrushTextSecondary}" FontSize="10"/>
                                 <TextBlock x:Name="TxtPowerGpu" Text="0.0 W" FontSize="18" FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" FontFamily="Consolas"/>
-                                <TextBlock Text="NVIDIA NVML" Foreground="{DynamicResource BrushTextSecondary}" FontSize="9"/>
+                                <TextBlock x:Name="TxtPowerGpuSub" Text="GPU Board Power" Foreground="{DynamicResource BrushTextSecondary}" FontSize="9"/>
                             </StackPanel>
                         </Border>
                     </Grid>
@@ -1599,7 +1599,8 @@
                 </Grid>
 
                 <!-- 2. FULL LIVE PROCESS MATRIX (SEARCH & SORT) -->
-                <Border Grid.Row="1" Background="{DynamicResource BrushPanelBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" CornerRadius="10" Padding="12,10" Effect="{DynamicResource SkeuoCardShadow}">
+                <Border Grid.Row="1" Background="{DynamicResource BrushPanelBg}" CornerRadius="10" Effect="{DynamicResource SkeuoCardShadow}" IsHitTestVisible="False"/>
+                <Border Grid.Row="1" Background="{DynamicResource BrushPanelBg}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" CornerRadius="10" Padding="12,10">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/> <!-- Search Box & Process Counter -->
@@ -1616,41 +1617,43 @@
                                 </Border>
                             </StackPanel>
 
-                            <!-- Search Box -->
-                            <Border DockPanel.Dock="Right" HorizontalAlignment="Right" Background="{DynamicResource BrushCardSunken}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" CornerRadius="6" Padding="8,3" Width="260">
-                                <TextBox x:Name="TxtProcessFilter" Text="Filter processes (e.g. chrome, code)..." TextChanged="TxtProcessFilter_TextChanged" GotFocus="TxtProcessFilter_GotFocus" LostFocus="TxtProcessFilter_LostFocus" Background="Transparent" BorderThickness="0" Foreground="{DynamicResource BrushTextPrimary}" FontSize="11" VerticalAlignment="Center"/>
-                            </Border>
+                            <!-- Pause Toggle & Search Box -->
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                <ToggleButton x:Name="BtnPauseProcesses" Content="Pause" Style="{StaticResource TechToggleButton}" Padding="10,4" Margin="0,0,8,0" Click="BtnPauseProcesses_Click" ToolTip="Pause or resume real-time process updates"/>
+                                <Border Background="{DynamicResource BrushCardSunken}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" CornerRadius="6" Padding="8,3" Width="260">
+                                    <TextBox x:Name="TxtProcessFilter" Text="Filter processes (e.g. chrome, code)..." TextChanged="TxtProcessFilter_TextChanged" GotFocus="TxtProcessFilter_GotFocus" LostFocus="TxtProcessFilter_LostFocus" Background="Transparent" BorderThickness="0" Foreground="{DynamicResource BrushTextPrimary}" FontSize="11" VerticalAlignment="Center"/>
+                                </Border>
+                            </StackPanel>
                         </DockPanel>
 
                         <!-- Live DataGrid -->
-                        <DataGrid Grid.Row="1" x:Name="GridAllProcesses" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" IsReadOnly="True" CanUserResizeColumns="True" CanUserReorderColumns="True" HeadersVisibility="Column" GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="{DynamicResource BrushGridLine}" Background="Transparent" BorderThickness="0" Sorting="GridAllProcesses_Sorting" RowHeight="24" SelectionUnit="FullRow" ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                                  RowDetailsVisibilityMode="VisibleWhenSelected"
-                                  VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling" ScrollViewer.CanContentScroll="True" EnableRowVirtualization="True">
+                        <DataGrid Grid.Row="1" x:Name="GridAllProcesses" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" IsReadOnly="True" CanUserResizeColumns="True" CanUserReorderColumns="True" HeadersVisibility="Column" GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="{DynamicResource BrushGridLine}" Background="Transparent" BorderThickness="0" Sorting="GridAllProcesses_Sorting" RowHeight="24" SelectionUnit="FullRow" SelectionMode="Single" ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                  RowDetailsVisibilityMode="Visible"
+                                  PreviewMouseLeftButtonDown="GridAllProcesses_PreviewMouseLeftButtonDown"
+                                  PreviewMouseRightButtonUp="GridAllProcesses_PreviewMouseRightButtonUp"
+                                  VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling" ScrollViewer.CanContentScroll="True" EnableRowVirtualization="True" EnableColumnVirtualization="True">
                             <DataGrid.RowStyle>
                                 <Style TargetType="{x:Type DataGridRow}">
                                     <Setter Property="Background" Value="{DynamicResource BrushCardBg}"/>
                                     <Setter Property="Foreground" Value="{DynamicResource BrushTextPrimary}"/>
                                     <Style.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="{DynamicResource BrushCardSunken}"/>
+                                        </Trigger>
                                         <Trigger Property="IsSelected" Value="True">
                                             <Setter Property="Background" Value="{DynamicResource BrushAccentCobalt}"/>
                                             <Setter Property="Foreground" Value="#FFFFFF"/>
                                         </Trigger>
-                                        <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter Property="Background" Value="{DynamicResource BrushCardSunken}"/>
-                                        </Trigger>
-                                        <DataTrigger Binding="{Binding HasChildren}" Value="False">
-                                            <Setter Property="DetailsVisibility" Value="Collapsed"/>
-                                        </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
                             </DataGrid.RowStyle>
                             <DataGrid.RowDetailsTemplate>
                                 <DataTemplate>
                                     <Border Margin="24,2,8,6" Padding="8,6" Background="{DynamicResource BrushCardSunken}" BorderBrush="{DynamicResource BrushCardBorder}" BorderThickness="1" CornerRadius="6"
-                                            Visibility="{Binding HasChildren, Converter={StaticResource BoolToVis}}">
+                                            Visibility="{Binding DetailsVisible, Converter={StaticResource BoolToVis}}">
                                         <StackPanel>
                                             <TextBlock Text="Child Process Instances (PIDs):" FontSize="10.5" FontWeight="Bold" Foreground="{DynamicResource BrushTextSecondary}" Margin="0,0,0,4"/>
-                                            <ItemsControl ItemsSource="{Binding Children}">
+                                            <ItemsControl ItemsSource="{Binding ObservableChildren}">
                                                 <ItemsControl.ItemTemplate>
                                                     <DataTemplate>
                                                         <Grid Margin="0,1" Height="20">

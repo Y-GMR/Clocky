@@ -12,16 +12,20 @@ namespace Clocky.Core;
 
 public class ProcessTracker : IDisposable
 {
-    private readonly Dictionary<(int Pid, long CreateTime), long> _prevCpuTimes = new(512);
-    private readonly Dictionary<(int Pid, long CreateTime), (ulong ReadBytes, ulong WriteBytes)> _prevIoBytes = new(512);
-    private readonly Dictionary<(int Pid, long CreateTime), (long Recv, long Sent)> _prevNetBytes = new(512);
+    private Dictionary<(int Pid, long CreateTime), long> _prevCpuTimes = new(512);
+    private Dictionary<(int Pid, long CreateTime), long> _currCpuTimes = new(512);
+    private Dictionary<(int Pid, long CreateTime), (ulong ReadBytes, ulong WriteBytes)> _prevIoBytes = new(512);
+    private Dictionary<(int Pid, long CreateTime), (ulong ReadBytes, ulong WriteBytes)> _currIoBytes = new(512);
+    private Dictionary<(int Pid, long CreateTime), (long Recv, long Sent)> _prevNetBytes = new(512);
+    private Dictionary<(int Pid, long CreateTime), (long Recv, long Sent)> _currNetBytes = new(512);
     private DateTime _prevSampleTime = DateTime.UtcNow;
+    private double _lastValidDeltaSec = 1.0;
     private readonly int _logicalCoreCount = Math.Max(1, Environment.ProcessorCount);
     private readonly object _syncLock = new();
 
-    // Reusable unmanaged buffer for NtQuerySystemInformation (2MB preallocated)
+    // Reusable unmanaged buffer for NtQuerySystemInformation (dynamically grows if needed)
     private IntPtr _nativeBuffer = IntPtr.Zero;
-    private const int NativeBufferSize = 2 * 1024 * 1024;
+    private int _nativeBufferSize = 2 * 1024 * 1024;
 
     // Real-time Kernel ETW Session for exact per-packet byte counters
     private TraceEventSession? _etwSession;
@@ -29,14 +33,19 @@ public class ProcessTracker : IDisposable
     private readonly ConcurrentDictionary<int, long> _etwRecvBytes = new();
     private readonly ConcurrentDictionary<int, long> _etwSentBytes = new();
 
-    // Cache of active network PIDs (refreshed every 2 seconds)
-    private HashSet<int> _cachedNetPids = new();
+    // Cache of active network sockets per PID (refreshed every 2 seconds)
+    private Dictionary<int, int> _cachedEstablishedSockets = new();
+    private Dictionary<int, int> _cachedTotalSockets = new();
     private DateTime _lastNetPidRefresh = DateTime.MinValue;
 
-    // Cache of GPU Performance Counters: InstanceName -> (Counter, Pid) (refreshed every 15s)
-    private readonly Dictionary<string, (PerformanceCounter Counter, int Pid)> _gpuCounters = new();
+    // Batch GPU PerformanceCounterCategory readers and CounterSample state (zero per-instance handles)
+    private PerformanceCounterCategory? _gpuEngineCategory;
+    private PerformanceCounterCategory? _gpuMemoryCategory;
+    private Dictionary<string, (CounterSample Sample, int Pid)> _prevGpuSamples = new(512);
+    private Dictionary<string, (CounterSample Sample, int Pid)> _currGpuSamples = new(512);
     private static readonly List<ProcessInstanceItem> s_emptyChildren = new(0);
-    private DateTime _lastGpuCounterRefresh = DateTime.MinValue;
+    private DateTime _lastGpuCategoryCheck = DateTime.MinValue;
+    private bool _gpuCategoriesChecked;
 
     public bool DetailedMode { get; set; } = false;
     public GpuProcessEngineState GpuEngineState { get; private set; } = GpuProcessEngineState.Active;
@@ -46,7 +55,7 @@ public class ProcessTracker : IDisposable
     {
         try
         {
-            _nativeBuffer = Marshal.AllocHGlobal(NativeBufferSize);
+            _nativeBuffer = Marshal.AllocHGlobal(_nativeBufferSize);
         }
         catch { }
 
@@ -113,11 +122,8 @@ public class ProcessTracker : IDisposable
                 Marshal.FreeHGlobal(_nativeBuffer);
                 _nativeBuffer = IntPtr.Zero;
             }
-            foreach (var entry in _gpuCounters.Values)
-            {
-                try { entry.Counter.Dispose(); } catch { }
-            }
-            _gpuCounters.Clear();
+            _prevGpuSamples.Clear();
+            _currGpuSamples.Clear();
 
             try
             {
@@ -135,19 +141,43 @@ public class ProcessTracker : IDisposable
         lock (_syncLock)
         {
             var now = DateTime.UtcNow;
-            double deltaSec = Math.Max(0.2, (now - _prevSampleTime).TotalSeconds);
-            _prevSampleTime = now;
+            double rawElapsed = (now - _prevSampleTime).TotalSeconds;
+            bool advanceBaseline = rawElapsed >= 0.25;
+            double deltaSec = advanceBaseline ? rawElapsed : Math.Max(0.2, _lastValidDeltaSec + rawElapsed);
 
-            var processMap = new Dictionary<int, ProcessItem>(512);
-            var currentCpuTimes = new Dictionary<(int Pid, long CreateTime), long>(512);
-            var currentIoBytes = new Dictionary<(int Pid, long CreateTime), (ulong ReadBytes, ulong WriteBytes)>(512);
-            var currentNetBytes = new Dictionary<(int Pid, long CreateTime), (long Recv, long Sent)>(512);
+            bool detailed = DetailedMode;
+            var processMap = detailed ? new Dictionary<int, ProcessItem>(512) : null;
+            bool usePriorTickBaseline = !advanceBaseline && _currCpuTimes.Count > 0;
+            var baseCpu = usePriorTickBaseline ? _currCpuTimes : _prevCpuTimes;
+            var baseIo = usePriorTickBaseline ? _currIoBytes : _prevIoBytes;
+            var baseNet = usePriorTickBaseline ? _currNetBytes : _prevNetBytes;
+
+            if (advanceBaseline)
+            {
+                _currCpuTimes.Clear();
+                _currIoBytes.Clear();
+                if (_etwSession != null) _currNetBytes.Clear();
+            }
 
             // 1. Fast Native Kernel Process Enumeration via NtQuerySystemInformation
             if (_nativeBuffer != IntPtr.Zero)
             {
                 int returnLength = 0;
-                int status = NtQuerySystemInformation(SystemProcessInformation, _nativeBuffer, NativeBufferSize, out returnLength);
+                int status = NtQuerySystemInformation(SystemProcessInformation, _nativeBuffer, _nativeBufferSize, out returnLength);
+                if (status == unchecked((int)0xC0000004) && returnLength > _nativeBufferSize) // STATUS_INFO_LENGTH_MISMATCH
+                {
+                    try
+                    {
+                        int newSize = Math.Max(_nativeBufferSize * 2, returnLength + 65536);
+                        IntPtr newBuf = Marshal.AllocHGlobal(newSize);
+                        Marshal.FreeHGlobal(_nativeBuffer);
+                        _nativeBuffer = newBuf;
+                        _nativeBufferSize = newSize;
+                        status = NtQuerySystemInformation(SystemProcessInformation, _nativeBuffer, _nativeBufferSize, out returnLength);
+                    }
+                    catch { }
+                }
+
                 if (status == 0) // STATUS_SUCCESS
                 {
                     IntPtr curr = _nativeBuffer;
@@ -155,77 +185,88 @@ public class ProcessTracker : IDisposable
                     {
                         var proc = Marshal.PtrToStructure<SYSTEM_PROCESS_INFORMATION>(curr);
                         int pid = proc.UniqueProcessId.ToInt32();
-                        long createTime = proc.CreateTime;
-                        var procKey = (pid, createTime);
 
                         if (pid > 0) // Skip System Idle Process (PID 0)
                         {
-                            string pName = proc.ImageName.Buffer != IntPtr.Zero && proc.ImageName.Length > 0
-                                ? Marshal.PtrToStringUni(proc.ImageName.Buffer, proc.ImageName.Length / 2)
-                                : "System";
-
-                            // Strip .exe extension if present for clean UI display
-                            if (pName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
-                                pName = pName.Substring(0, pName.Length - 4);
-
+                            long createTime = proc.CreateTime;
+                            var procKey = (pid, createTime);
                             long rawCpuTime = proc.UserTime + proc.KernelTime;
-                            currentCpuTimes[procKey] = rawCpuTime;
-                            currentIoBytes[procKey] = ((ulong)proc.ReadTransferCount, (ulong)proc.WriteTransferCount);
+                            ulong readBytes = (ulong)proc.ReadTransferCount;
+                            ulong writeBytes = (ulong)proc.WriteTransferCount;
 
-                            float cpuUsage = 0f;
-                            float diskReadMBps = 0f;
-                            float diskWriteMBps = 0f;
-
-                            if (_prevCpuTimes.TryGetValue(procKey, out long prevCpu))
-                            {
-                                long deltaCpu = rawCpuTime - prevCpu;
-                                if (deltaCpu > 0)
-                                {
-                                    double cpuPercentTotal = (deltaCpu / (deltaSec * 10000000.0 * _logicalCoreCount)) * 100.0;
-                                    cpuUsage = (float)Math.Clamp(cpuPercentTotal, 0.0, 100.0);
-                                }
-                            }
-
-                            if (_prevIoBytes.TryGetValue(procKey, out var prevIo))
-                            {
-                                ulong deltaRead = (ulong)proc.ReadTransferCount >= prevIo.ReadBytes ? (ulong)proc.ReadTransferCount - prevIo.ReadBytes : 0;
-                                ulong deltaWrite = (ulong)proc.WriteTransferCount >= prevIo.WriteBytes ? (ulong)proc.WriteTransferCount - prevIo.WriteBytes : 0;
-                                diskReadMBps = (float)(deltaRead / (deltaSec * 1024.0 * 1024.0));
-                                diskWriteMBps = (float)(deltaWrite / (deltaSec * 1024.0 * 1024.0));
-                            }
-
-                            float netDownKBps = 0f;
-                            float netUpKBps = 0f;
+                            long curRecv = 0L;
+                            long curSent = 0L;
                             if (_etwSession != null)
                             {
-                                long curRecv = _etwRecvBytes.GetValueOrDefault(pid, 0L);
-                                long curSent = _etwSentBytes.GetValueOrDefault(pid, 0L);
-                                currentNetBytes[procKey] = (curRecv, curSent);
+                                curRecv = _etwRecvBytes.GetValueOrDefault(pid, 0L);
+                                curSent = _etwSentBytes.GetValueOrDefault(pid, 0L);
+                            }
 
-                                if (_prevNetBytes.TryGetValue(procKey, out var prevNet))
+                            if (advanceBaseline)
+                            {
+                                _currCpuTimes[procKey] = rawCpuTime;
+                                _currIoBytes[procKey] = (readBytes, writeBytes);
+                                if (_etwSession != null)
+                                    _currNetBytes[procKey] = (curRecv, curSent);
+                            }
+
+                            if (detailed && processMap != null)
+                            {
+                                string pName = proc.ImageName.Buffer != IntPtr.Zero && proc.ImageName.Length > 0
+                                    ? Marshal.PtrToStringUni(proc.ImageName.Buffer, proc.ImageName.Length / 2)
+                                    : "System";
+
+                                if (pName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                                    pName = pName.Substring(0, pName.Length - 4);
+
+                                float cpuUsage = 0f;
+                                float diskReadMBps = 0f;
+                                float diskWriteMBps = 0f;
+
+                                if (baseCpu.TryGetValue(procKey, out long prevCpu))
+                                {
+                                    long deltaCpu = rawCpuTime - prevCpu;
+                                    if (deltaCpu > 0)
+                                    {
+                                        double cpuPercentTotal = (deltaCpu / (deltaSec * 10000000.0 * _logicalCoreCount)) * 100.0;
+                                        cpuUsage = (float)Math.Clamp(cpuPercentTotal, 0.0, 100.0);
+                                    }
+                                }
+
+                                if (baseIo.TryGetValue(procKey, out var prevIo))
+                                {
+                                    ulong deltaRead = readBytes >= prevIo.ReadBytes ? readBytes - prevIo.ReadBytes : 0;
+                                    ulong deltaWrite = writeBytes >= prevIo.WriteBytes ? writeBytes - prevIo.WriteBytes : 0;
+                                    diskReadMBps = (float)(deltaRead / (deltaSec * 1024.0 * 1024.0));
+                                    diskWriteMBps = (float)(deltaWrite / (deltaSec * 1024.0 * 1024.0));
+                                }
+
+                                float netDownKBps = 0f;
+                                float netUpKBps = 0f;
+                                if (_etwSession != null && baseNet.TryGetValue(procKey, out var prevNet))
                                 {
                                     long deltaRecv = curRecv >= prevNet.Recv ? curRecv - prevNet.Recv : 0;
                                     long deltaSent = curSent >= prevNet.Sent ? curSent - prevNet.Sent : 0;
                                     netDownKBps = (float)(deltaRecv / (deltaSec * 1024.0));
                                     netUpKBps = (float)(deltaSent / (deltaSec * 1024.0));
                                 }
-                            }
 
-                            processMap[pid] = new ProcessItem
-                            {
-                                Pid = pid,
-                                Name = pName,
-                                InstanceCount = 1,
-                                CpuPercent = cpuUsage,
-                                PrivateMemoryBytes = (long)proc.PrivatePageCount,
-                                WorkingSetBytes = proc.WorkingSetSize.ToInt64(),
-                                DiskReadMBps = diskReadMBps,
-                                DiskWriteMBps = diskWriteMBps,
-                                NetDownSpeedKBps = netDownKBps,
-                                NetUpSpeedKBps = netUpKBps,
-                                ThreadCount = (int)proc.NumberOfThreads,
-                                Status = "Running"
-                            };
+                                processMap[pid] = new ProcessItem
+                                {
+                                    Pid = pid,
+                                    Name = pName,
+                                    InstanceCount = 1,
+                                    CpuPercent = cpuUsage,
+                                    PrivateMemoryBytes = (long)proc.PrivatePageCount,
+                                    WorkingSetBytes = proc.WorkingSetSize.ToInt64(),
+                                    DiskReadMBps = diskReadMBps,
+                                    DiskWriteMBps = diskWriteMBps,
+                                    NetDownSpeedKBps = netDownKBps,
+                                    NetUpSpeedKBps = netUpKBps,
+                                    ThreadCount = (int)proc.NumberOfThreads,
+                                    Status = "Running"
+                                };
+                            }
                         }
 
                         if (proc.NextEntryOffset == 0)
@@ -235,37 +276,37 @@ public class ProcessTracker : IDisposable
                 }
             }
 
-            _prevCpuTimes.Clear();
-            foreach (var kvp in currentCpuTimes)
+            if (advanceBaseline && !detailed)
             {
-                _prevCpuTimes[kvp.Key] = kvp.Value;
+                (_prevCpuTimes, _currCpuTimes) = (_currCpuTimes, _prevCpuTimes);
+                (_prevIoBytes, _currIoBytes) = (_currIoBytes, _prevIoBytes);
+                if (_etwSession != null)
+                    (_prevNetBytes, _currNetBytes) = (_currNetBytes, _prevNetBytes);
+                _prevSampleTime = now;
+                _lastValidDeltaSec = deltaSec;
+                return _lastDetailed;
             }
 
-            _prevIoBytes.Clear();
-            foreach (var kvp in currentIoBytes)
-            {
-                _prevIoBytes[kvp.Key] = kvp.Value;
-            }
-
-            if (_etwSession != null)
-            {
-                _prevNetBytes.Clear();
-                foreach (var kvp in currentNetBytes)
-                {
-                    _prevNetBytes[kvp.Key] = kvp.Value;
-                }
-            }
-
-            if (!DetailedMode)
+            if (!detailed || processMap == null)
             {
                 return _lastDetailed;
             }
 
-            // 2. Gather GPU Engine Utilization per Process
+            if (advanceBaseline)
+            {
+                (_prevCpuTimes, _currCpuTimes) = (_currCpuTimes, _prevCpuTimes);
+                (_prevIoBytes, _currIoBytes) = (_currIoBytes, _prevIoBytes);
+                if (_etwSession != null)
+                    (_prevNetBytes, _currNetBytes) = (_currNetBytes, _prevNetBytes);
+                _prevSampleTime = now;
+                _lastValidDeltaSec = deltaSec;
+            }
+
+            // 2. Gather GPU Engine Utilization and Dedicated/Local VRAM per Process via single-call ReadCategory()
             PollGpuCounters(processMap);
 
-            // 3. Match active network sockets per PID (refreshed every 2 seconds)
-            var (establishedSockets, totalSockets) = GetActiveNetworkSockets();
+            // 3. Match active network sockets per PID (cached for 2 seconds)
+            var (establishedSockets, totalSockets) = GetActiveNetworkSockets(now);
             foreach (var kvp in totalSockets)
             {
                 if (processMap.TryGetValue(kvp.Key, out var pItem))
@@ -275,60 +316,97 @@ public class ProcessTracker : IDisposable
                 }
             }
 
-            // Group and bundle processes with the exact same name (e.g. multi-process browsers, IDE workers)
-            var bundledList = processMap.Values
-                .GroupBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
-                .Select(g =>
+            // Group and bundle processes with the exact same name (fast-path for single-instance processes)
+            var groups = new Dictionary<string, List<ProcessItem>>(processMap.Count, StringComparer.OrdinalIgnoreCase);
+            foreach (var p in processMap.Values)
+            {
+                if (!groups.TryGetValue(p.Name, out var list))
                 {
-                    var sorted = g.OrderByDescending(p => p.WorkingSetBytes).ToList();
-                    var primary = sorted[0];
-                    int count = sorted.Count;
-                    var children = count > 1
-                        ? sorted
-                           .Select(p => new ProcessInstanceItem
-                           {
-                               Pid = p.Pid,
-                               Name = p.Name,
-                               CpuPercent = p.CpuPercent,
-                               GpuPercent = p.GpuPercent,
-                               GpuVramMb = p.GpuVramMb,
-                               PrivateMemoryBytes = p.PrivateMemoryBytes,
-                               WorkingSetBytes = p.WorkingSetBytes,
-                               DiskReadMBps = p.DiskReadMBps,
-                               DiskWriteMBps = p.DiskWriteMBps,
-                               EstablishedSockets = p.EstablishedSockets,
-                               ActiveSockets = p.ActiveSockets,
-                               NetDownSpeedKBps = p.NetDownSpeedKBps,
-                               NetUpSpeedKBps = p.NetUpSpeedKBps,
-                               ThreadCount = p.ThreadCount,
-                               Status = p.Status
-                           }).ToList()
-                        : s_emptyChildren;
+                    list = new List<ProcessItem>(1);
+                    groups[p.Name] = list;
+                }
+                list.Add(p);
+            }
 
-                    return new ProcessItem
+            var allList = new List<ProcessItem>(groups.Count);
+            foreach (var g in groups.Values)
+            {
+                int count = g.Count;
+                if (count == 1)
+                {
+                    var single = g[0];
+                    single.CpuPercent = Math.Clamp(single.CpuPercent, 0f, 100f);
+                    single.GpuPercent = Math.Clamp(single.GpuPercent, 0f, 100f);
+                    single.Children = s_emptyChildren;
+                    allList.Add(single);
+                    continue;
+                }
+
+                g.Sort((a, b) => b.WorkingSetBytes.CompareTo(a.WorkingSetBytes));
+                var primary = g[0];
+                var children = new List<ProcessInstanceItem>(count);
+                double sumCpu = 0;
+                float sumGpu = 0f, sumVram = 0f, sumRead = 0f, sumWrite = 0f, sumDown = 0f, sumUp = 0f;
+                long sumPriv = 0, sumWork = 0;
+                int sumEst = 0, sumAct = 0, sumThreads = 0;
+
+                for (int i = 0; i < count; i++)
+                {
+                    var p = g[i];
+                    sumCpu += p.CpuPercent;
+                    sumGpu += p.GpuPercent;
+                    sumVram += p.GpuVramMb;
+                    sumPriv += p.PrivateMemoryBytes;
+                    sumWork += p.WorkingSetBytes;
+                    sumRead += p.DiskReadMBps;
+                    sumWrite += p.DiskWriteMBps;
+                    sumEst += p.EstablishedSockets;
+                    sumAct += p.ActiveSockets;
+                    sumDown += p.NetDownSpeedKBps;
+                    sumUp += p.NetUpSpeedKBps;
+                    sumThreads += p.ThreadCount;
+
+                    children.Add(new ProcessInstanceItem
                     {
-                        Pid = primary.Pid,
-                        Name = primary.Name,
-                        InstanceCount = count,
-                        CpuPercent = (float)Math.Clamp(sorted.Sum(p => (double)p.CpuPercent), 0.0, 100.0),
-                        GpuPercent = sorted.Sum(p => p.GpuPercent),
-                        GpuVramMb = sorted.Sum(p => p.GpuVramMb),
-                        PrivateMemoryBytes = sorted.Sum(p => p.PrivateMemoryBytes),
-                        WorkingSetBytes = sorted.Sum(p => p.WorkingSetBytes),
-                        DiskReadMBps = sorted.Sum(p => p.DiskReadMBps),
-                        DiskWriteMBps = sorted.Sum(p => p.DiskWriteMBps),
-                        EstablishedSockets = sorted.Sum(p => p.EstablishedSockets),
-                        ActiveSockets = sorted.Sum(p => p.ActiveSockets),
-                        NetDownSpeedKBps = sorted.Sum(p => p.NetDownSpeedKBps),
-                        NetUpSpeedKBps = sorted.Sum(p => p.NetUpSpeedKBps),
-                        ThreadCount = sorted.Sum(p => p.ThreadCount),
-                        Status = "Running",
-                        Children = children
-                    };
-                })
-                .ToList();
+                        Pid = p.Pid,
+                        Name = p.Name,
+                        CpuPercent = p.CpuPercent,
+                        GpuPercent = Math.Clamp(p.GpuPercent, 0f, 100f),
+                        GpuVramMb = p.GpuVramMb,
+                        PrivateMemoryBytes = p.PrivateMemoryBytes,
+                        WorkingSetBytes = p.WorkingSetBytes,
+                        DiskReadMBps = p.DiskReadMBps,
+                        DiskWriteMBps = p.DiskWriteMBps,
+                        EstablishedSockets = p.EstablishedSockets,
+                        ActiveSockets = p.ActiveSockets,
+                        NetDownSpeedKBps = p.NetDownSpeedKBps,
+                        NetUpSpeedKBps = p.NetUpSpeedKBps,
+                        ThreadCount = p.ThreadCount,
+                        Status = p.Status
+                    });
+                }
 
-            var allList = bundledList;
+                allList.Add(new ProcessItem
+                {
+                    Pid = primary.Pid,
+                    Name = primary.Name,
+                    InstanceCount = count,
+                    CpuPercent = (float)Math.Clamp(sumCpu, 0.0, 100.0),
+                    GpuPercent = Math.Clamp(sumGpu, 0f, 100f),
+                    GpuVramMb = sumVram,
+                    PrivateMemoryBytes = sumPriv,
+                    WorkingSetBytes = sumWork,
+                    DiskReadMBps = sumRead,
+                    DiskWriteMBps = sumWrite,
+                    EstablishedSockets = sumEst,
+                    ActiveSockets = sumAct,
+                    NetDownSpeedKBps = sumDown,
+                    NetUpSpeedKBps = sumUp,
+                    ThreadCount = sumThreads,
+                    Status = "Running",
+                    Children = children
+                });
+            }
 
             // 4. Derive Top 3 Lists (Strictly exclude Clocky itself from all leaderboards)
             int currentPid = Environment.ProcessId;
@@ -376,6 +454,12 @@ public class ProcessTracker : IDisposable
                 .Take(3)
                 .ToList();
 
+            allList.Sort((a, b) =>
+            {
+                int cmp = b.WorkingSetBytes.CompareTo(a.WorkingSetBytes);
+                return cmp != 0 ? cmp : b.CpuPercent.CompareTo(a.CpuPercent);
+            });
+
             _lastDetailed = new ProcessTelemetrySnapshot
             {
                 TopCpu = topCpu,
@@ -384,41 +468,43 @@ public class ProcessTracker : IDisposable
                 TopDiskIo = topDiskIo,
                 TopNet = topNet,
                 AllProcesses = allList
-                    .OrderByDescending(p => p.WorkingSetBytes)
-                    .ThenByDescending(p => p.CpuPercent)
-                    .ToList()
             };
             return _lastDetailed;
         }
     }
 
-    private static (Dictionary<int, int> Established, Dictionary<int, int> Total) GetActiveNetworkSockets()
+    private (Dictionary<int, int> Established, Dictionary<int, int> Total) GetActiveNetworkSockets(DateTime now)
     {
-        var established = new Dictionary<int, int>();
-        var total = new Dictionary<int, int>();
+        if ((now - _lastNetPidRefresh).TotalSeconds < 2.0 && _cachedTotalSockets.Count > 0)
+        {
+            return (_cachedEstablishedSockets, _cachedTotalSockets);
+        }
+
+        _lastNetPidRefresh = now;
+        var established = new Dictionary<int, int>(128);
+        var total = new Dictionary<int, int>(128);
         try
         {
-            // 1. IPv4 TCP Connections
+            // 1. IPv4 TCP Connections (MIB_TCPROW_OWNER_PID: 24 bytes; state @ 0, owningPid @ 20)
             int size = 0;
-            GetExtendedTcpTable(IntPtr.Zero, ref size, true, 2, TCP_TABLE_CLASS.TCP_TABLE_OWNER_PID_ALL);
+            GetExtendedTcpTable(IntPtr.Zero, ref size, false, 2, TCP_TABLE_CLASS.TCP_TABLE_OWNER_PID_ALL);
             if (size > 0)
             {
                 IntPtr pTable = Marshal.AllocHGlobal(size);
                 try
                 {
-                    if (GetExtendedTcpTable(pTable, ref size, true, 2, TCP_TABLE_CLASS.TCP_TABLE_OWNER_PID_ALL) == 0)
+                    if (GetExtendedTcpTable(pTable, ref size, false, 2, TCP_TABLE_CLASS.TCP_TABLE_OWNER_PID_ALL) == 0)
                     {
                         int count = Marshal.ReadInt32(pTable);
                         IntPtr rowPtr = IntPtr.Add(pTable, 4);
-                        int rowSize = Marshal.SizeOf<MIB_TCPROW_OWNER_PID>();
+                        const int rowSize = 24;
                         for (int i = 0; i < count; i++)
                         {
-                            var row = Marshal.PtrToStructure<MIB_TCPROW_OWNER_PID>(rowPtr);
-                            int pid = (int)row.owningPid;
+                            int pid = Marshal.ReadInt32(rowPtr, 20);
                             if (pid > 4)
                             {
                                 total[pid] = total.GetValueOrDefault(pid, 0) + 1;
-                                if (row.state == 5) // MIB_TCP_STATE_ESTAB
+                                if (Marshal.ReadInt32(rowPtr, 0) == 5) // MIB_TCP_STATE_ESTAB
                                 {
                                     established[pid] = established.GetValueOrDefault(pid, 0) + 1;
                                 }
@@ -433,27 +519,26 @@ public class ProcessTracker : IDisposable
                 }
             }
 
-            // 2. IPv6 TCP Connections
+            // 2. IPv6 TCP Connections (MIB_TCP6ROW_OWNER_PID: 56 bytes; state @ 48, owningPid @ 52)
             size = 0;
-            GetExtendedTcpTable(IntPtr.Zero, ref size, true, 23, TCP_TABLE_CLASS.TCP_TABLE_OWNER_PID_ALL);
+            GetExtendedTcpTable(IntPtr.Zero, ref size, false, 23, TCP_TABLE_CLASS.TCP_TABLE_OWNER_PID_ALL);
             if (size > 0)
             {
                 IntPtr pTable = Marshal.AllocHGlobal(size);
                 try
                 {
-                    if (GetExtendedTcpTable(pTable, ref size, true, 23, TCP_TABLE_CLASS.TCP_TABLE_OWNER_PID_ALL) == 0)
+                    if (GetExtendedTcpTable(pTable, ref size, false, 23, TCP_TABLE_CLASS.TCP_TABLE_OWNER_PID_ALL) == 0)
                     {
                         int count = Marshal.ReadInt32(pTable);
                         IntPtr rowPtr = IntPtr.Add(pTable, 4);
-                        int rowSize = Marshal.SizeOf<MIB_TCP6ROW_OWNER_PID>();
+                        const int rowSize = 56;
                         for (int i = 0; i < count; i++)
                         {
-                            var row = Marshal.PtrToStructure<MIB_TCP6ROW_OWNER_PID>(rowPtr);
-                            int pid = (int)row.owningPid;
+                            int pid = Marshal.ReadInt32(rowPtr, 52);
                             if (pid > 4)
                             {
                                 total[pid] = total.GetValueOrDefault(pid, 0) + 1;
-                                if (row.state == 5) // MIB_TCP_STATE_ESTAB
+                                if (Marshal.ReadInt32(rowPtr, 48) == 5) // MIB_TCP_STATE_ESTAB
                                 {
                                     established[pid] = established.GetValueOrDefault(pid, 0) + 1;
                                 }
@@ -468,23 +553,52 @@ public class ProcessTracker : IDisposable
                 }
             }
 
-            // 3. UDP Listeners
+            // 3. IPv4 UDP Listeners (MIB_UDPROW_OWNER_PID: 12 bytes; owningPid @ 8)
             size = 0;
-            GetExtendedUdpTable(IntPtr.Zero, ref size, true, 2, UDP_TABLE_CLASS.UDP_TABLE_OWNER_PID);
+            GetExtendedUdpTable(IntPtr.Zero, ref size, false, 2, UDP_TABLE_CLASS.UDP_TABLE_OWNER_PID);
             if (size > 0)
             {
                 IntPtr pTable = Marshal.AllocHGlobal(size);
                 try
                 {
-                    if (GetExtendedUdpTable(pTable, ref size, true, 2, UDP_TABLE_CLASS.UDP_TABLE_OWNER_PID) == 0)
+                    if (GetExtendedUdpTable(pTable, ref size, false, 2, UDP_TABLE_CLASS.UDP_TABLE_OWNER_PID) == 0)
                     {
                         int count = Marshal.ReadInt32(pTable);
                         IntPtr rowPtr = IntPtr.Add(pTable, 4);
-                        int rowSize = Marshal.SizeOf<MIB_UDPROW_OWNER_PID>();
+                        const int rowSize = 12;
                         for (int i = 0; i < count; i++)
                         {
-                            var row = Marshal.PtrToStructure<MIB_UDPROW_OWNER_PID>(rowPtr);
-                            int pid = (int)row.owningPid;
+                            int pid = Marshal.ReadInt32(rowPtr, 8);
+                            if (pid > 4)
+                            {
+                                total[pid] = total.GetValueOrDefault(pid, 0) + 1;
+                            }
+                            rowPtr = IntPtr.Add(rowPtr, rowSize);
+                        }
+                    }
+                }
+                finally
+                {
+                    Marshal.FreeHGlobal(pTable);
+                }
+            }
+
+            // 4. IPv6 UDP Listeners (MIB_UDP6ROW_OWNER_PID: 28 bytes; owningPid @ 24)
+            size = 0;
+            GetExtendedUdpTable(IntPtr.Zero, ref size, false, 23, UDP_TABLE_CLASS.UDP_TABLE_OWNER_PID);
+            if (size > 0)
+            {
+                IntPtr pTable = Marshal.AllocHGlobal(size);
+                try
+                {
+                    if (GetExtendedUdpTable(pTable, ref size, false, 23, UDP_TABLE_CLASS.UDP_TABLE_OWNER_PID) == 0)
+                    {
+                        int count = Marshal.ReadInt32(pTable);
+                        IntPtr rowPtr = IntPtr.Add(pTable, 4);
+                        const int rowSize = 28;
+                        for (int i = 0; i < count; i++)
+                        {
+                            int pid = Marshal.ReadInt32(rowPtr, 24);
                             if (pid > 4)
                             {
                                 total[pid] = total.GetValueOrDefault(pid, 0) + 1;
@@ -500,108 +614,142 @@ public class ProcessTracker : IDisposable
             }
         }
         catch { }
+
+        _cachedEstablishedSockets = established;
+        _cachedTotalSockets = total;
         return (established, total);
+    }
+
+    private static int ParsePidFromGpuInstance(ReadOnlySpan<char> inst)
+    {
+        int pidStart = inst.IndexOf("pid_");
+        if (pidStart < 0) return -1;
+        var slice = inst.Slice(pidStart + 4);
+        int pidEnd = slice.IndexOf('_');
+        if (pidEnd <= 0) return -1;
+        return int.TryParse(slice.Slice(0, pidEnd), out int pid) ? pid : -1;
+    }
+
+    private static bool IsSupportedGpuEngine(ReadOnlySpan<char> inst)
+    {
+        return inst.Contains("engtype_3D", StringComparison.OrdinalIgnoreCase) ||
+               inst.Contains("engtype_Compute", StringComparison.OrdinalIgnoreCase) ||
+               inst.Contains("engtype_VideoDecode", StringComparison.OrdinalIgnoreCase) ||
+               inst.Contains("engtype_VideoEncode", StringComparison.OrdinalIgnoreCase) ||
+               inst.Contains("engtype_VideoProcessing", StringComparison.OrdinalIgnoreCase) ||
+               inst.Contains("engtype_Copy", StringComparison.OrdinalIgnoreCase) ||
+               inst.Contains("engtype_VR", StringComparison.OrdinalIgnoreCase);
     }
 
     private void PollGpuCounters(Dictionary<int, ProcessItem> processMap)
     {
         try
         {
-            if ((DateTime.UtcNow - _lastGpuCounterRefresh).TotalSeconds > 15)
+            var now = DateTime.UtcNow;
+            if (!_gpuCategoriesChecked || (now - _lastGpuCategoryCheck).TotalSeconds > 30)
             {
-                _lastGpuCounterRefresh = DateTime.UtcNow;
+                _lastGpuCategoryCheck = now;
+                _gpuCategoriesChecked = true;
                 try
                 {
-                    if (!PerformanceCounterCategory.Exists("GPU Engine"))
-                    {
-                        GpuEngineState = GpuProcessEngineState.CountersDisabled;
-                        return;
-                    }
+                    if (_gpuEngineCategory == null && PerformanceCounterCategory.Exists("GPU Engine"))
+                        _gpuEngineCategory = new PerformanceCounterCategory("GPU Engine");
+                }
+                catch { _gpuEngineCategory = null; }
 
-                    var cat = new PerformanceCounterCategory("GPU Engine");
-                    var insts = cat.GetInstanceNames();
-                    var activeInsts = new HashSet<string>(insts.Where(i => i.Contains("pid_") && (
-                        i.Contains("engtype_3D") ||
-                        i.Contains("engtype_Compute") ||
-                        i.Contains("engtype_VideoDecode") ||
-                        i.Contains("engtype_VideoEncode") ||
-                        i.Contains("engtype_VideoProcessing") ||
-                        i.Contains("engtype_Copy"))));
+                try
+                {
+                    if (_gpuMemoryCategory == null && PerformanceCounterCategory.Exists("GPU Process Memory"))
+                        _gpuMemoryCategory = new PerformanceCounterCategory("GPU Process Memory");
+                }
+                catch { _gpuMemoryCategory = null; }
+            }
 
-                    if (insts.Length > 0 && activeInsts.Count == 0)
+            if (_gpuEngineCategory == null)
+            {
+                GpuEngineState = GpuProcessEngineState.CountersDisabled;
+                return;
+            }
+
+            // 1. Single-call batch read of GPU Engine Utilization Percentage (~5ms vs 506ms per-instance NextValue)
+            var catData = _gpuEngineCategory.ReadCategory();
+            if (catData.Contains("Utilization Percentage"))
+            {
+                var utilCol = catData["Utilization Percentage"];
+                int totalInstances = utilCol.Count;
+                int supportedInstances = 0;
+                _currGpuSamples.Clear();
+
+                foreach (InstanceData id in utilCol.Values)
+                {
+                    ReadOnlySpan<char> instSpan = id.InstanceName.AsSpan();
+                    if (!instSpan.Contains("pid_", StringComparison.Ordinal) || !IsSupportedGpuEngine(instSpan))
+                        continue;
+
+                    supportedInstances++;
+                    if (_prevGpuSamples.TryGetValue(id.InstanceName, out var prev))
                     {
-                        GpuEngineState = GpuProcessEngineState.NoSupportedEngines;
-                    }
-                    else if (insts.Length == 0)
-                    {
-                        GpuEngineState = GpuProcessEngineState.CountersDisabled;
+                        int pid = prev.Pid;
+                        float val = CounterSample.Calculate(prev.Sample, id.Sample);
+                        if (val > 0.01f && float.IsFinite(val) && processMap.TryGetValue(pid, out var item))
+                        {
+                            item.GpuPercent = Math.Min(100f, item.GpuPercent + val);
+                        }
+                        _currGpuSamples[id.InstanceName] = (id.Sample, pid);
                     }
                     else
                     {
-                        GpuEngineState = GpuProcessEngineState.Active;
-                    }
-
-                    var toRemove = _gpuCounters.Keys.Where(k => !activeInsts.Contains(k)).ToList();
-                    foreach (var k in toRemove)
-                    {
-                        if (_gpuCounters.TryGetValue(k, out var entry))
+                        int pid = ParsePidFromGpuInstance(instSpan);
+                        if (pid > 0)
                         {
-                            try { entry.Counter.Dispose(); } catch { }
-                            _gpuCounters.Remove(k);
-                        }
-                    }
-
-                    foreach (var inst in activeInsts)
-                    {
-                        if (!_gpuCounters.ContainsKey(inst))
-                        {
-                            try
-                            {
-                                int pid = -1;
-                                int pidStart = inst.IndexOf("pid_");
-                                if (pidStart >= 0)
-                                {
-                                    int pidEnd = inst.IndexOf('_', pidStart + 4);
-                                    if (pidEnd > pidStart)
-                                    {
-                                        int.TryParse(inst.Substring(pidStart + 4, pidEnd - pidStart - 4), out pid);
-                                    }
-                                }
-
-                                if (pid > 0)
-                                {
-                                    var ctr = new PerformanceCounter("GPU Engine", "Utilization Percentage", inst, true);
-                                    ctr.NextValue();
-                                    _gpuCounters[inst] = (ctr, pid);
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                DiagnosticRingBuffer.Log("ProcessTracker:GpuCounterInit", ex);
-                            }
+                            _currGpuSamples[id.InstanceName] = (id.Sample, pid);
                         }
                     }
                 }
-                catch (Exception ex)
-                {
-                    GpuEngineState = GpuProcessEngineState.Failed;
-                    DiagnosticRingBuffer.Log("ProcessTracker:GpuCategoryQuery", ex);
-                }
+
+                (_prevGpuSamples, _currGpuSamples) = (_currGpuSamples, _prevGpuSamples);
+
+                if (totalInstances == 0)
+                    GpuEngineState = GpuProcessEngineState.CountersDisabled;
+                else if (supportedInstances == 0)
+                    GpuEngineState = GpuProcessEngineState.NoSupportedEngines;
+                else
+                    GpuEngineState = GpuProcessEngineState.Active;
+            }
+            else
+            {
+                GpuEngineState = GpuProcessEngineState.CountersDisabled;
             }
 
-            foreach (var entry in _gpuCounters.Values)
+            // 2. Single-call batch read of GPU Process Memory (<1ms) for Dedicated / Local VRAM per process
+            if (_gpuMemoryCategory != null)
             {
                 try
                 {
-                    float val = entry.Counter.NextValue();
-                    if (val > 0.01f && processMap.TryGetValue(entry.Pid, out var item))
+                    var memData = _gpuMemoryCategory.ReadCategory();
+                    InstanceDataCollection? memCol = null;
+                    if (memData.Contains("Dedicated Usage"))
+                        memCol = memData["Dedicated Usage"];
+                    else if (memData.Contains("Local Usage"))
+                        memCol = memData["Local Usage"];
+
+                    if (memCol != null)
                     {
-                        item.GpuPercent += val;
+                        foreach (InstanceData id in memCol.Values)
+                        {
+                            long bytes = id.RawValue;
+                            if (bytes <= 0) continue;
+                            int pid = ParsePidFromGpuInstance(id.InstanceName.AsSpan());
+                            if (pid > 0 && processMap.TryGetValue(pid, out var item))
+                            {
+                                item.GpuVramMb += bytes / (1024f * 1024f);
+                            }
+                        }
                     }
                 }
                 catch (Exception ex)
                 {
-                    DiagnosticRingBuffer.Log("ProcessTracker:GpuCounterRead", ex);
+                    DiagnosticRingBuffer.Log("ProcessTracker:GpuMemRead", ex);
                 }
             }
         }

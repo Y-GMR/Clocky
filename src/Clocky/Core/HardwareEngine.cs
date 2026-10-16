@@ -207,10 +207,40 @@ public class HardwareEngine : IDisposable
         _timer.Elapsed += (s, e) => Poll();
     }
 
+    private sealed class CachedDrivePartition
+    {
+        public string DriveLetter { get; init; } = "";
+        public string VolumeLabel { get; set; } = "";
+        public string FileSystem { get; set; } = "NTFS";
+        public string BusType { get; init; } = "Fixed";
+        public bool IsHdd { get; init; }
+        public bool IsRemovable { get; init; }
+        public int DeviceNumber { get; init; } = -1;
+        public float TotalGb { get; set; }
+        public float FreeGb { get; set; }
+    }
+
+    private readonly List<CachedDrivePartition> _cachedPartitions = new();
+    private DateTime _lastDrivePartitionRefresh = DateTime.MinValue;
+
     public bool TrackDetailedProcesses
     {
         get => _processTracker.DetailedMode;
         set => _processTracker.DetailedMode = value;
+    }
+
+    public void RefreshDetailedProcessesNow(TelemetrySnapshot targetSnapshot)
+    {
+        try
+        {
+            _processTracker.DetailedMode = true;
+            targetSnapshot.Processes = _processTracker.Poll(targetSnapshot.TotalNetDownloadSpeedKBps, targetSnapshot.TotalNetUploadSpeedKBps);
+            targetSnapshot.GpuProcessEngineState = _processTracker.GpuEngineState;
+        }
+        catch (Exception ex)
+        {
+            DiagnosticRingBuffer.Log("HardwareEngine:RefreshDetailedProcessesNow", ex);
+        }
     }
 
     public bool TrackDetailedNetwork
@@ -562,16 +592,23 @@ public class HardwareEngine : IDisposable
 
                 // Ground truth dynamic CPU core clocks matching Windows Task Manager & HWiNFO
                 bool hasDynamicClocks = coreClocks.Count > 0 && coreClocks.Values.Any(c => c > 0f);
-                if (!hasDynamicClocks || coreClocks.Count == 0)
+                if (!hasDynamicClocks || coreClocks.Count == 0 || snap.CpuTotalUtil <= 0f)
                 {
                     var (dynFreq, dynClocks) = SystemHardwareHelper.GetProcessorClocks();
-                    if (dynClocks.Count > 0)
+                    if ((!hasDynamicClocks || coreClocks.Count == 0) && dynClocks.Count > 0)
                     {
                         foreach (var kvp in dynClocks)
                         {
                             coreClocks[kvp.Key] = kvp.Value;
                         }
                         snap.CpuMaxFrequency = Math.Max(dynFreq, dynClocks.Values.Max());
+                    }
+                    if (snap.CpuTotalUtil <= 0f)
+                    {
+                        if (SystemHardwareHelper.LastTotalCpuLoad > 0f)
+                            snap.CpuTotalUtil = SystemHardwareHelper.LastTotalCpuLoad;
+                        else if (coreLoads.Count > 0)
+                            snap.CpuTotalUtil = coreLoads.Values.Average();
                     }
                 }
 
@@ -612,7 +649,7 @@ public class HardwareEngine : IDisposable
                     }
                     else
                     {
-                        float acpiTemp = GetAcpiThermalZoneTemp();
+                        float acpiTemp = SystemHardwareHelper.GetAcpiThermalZoneTemperature();
                         if (acpiTemp > 0)
                         {
                             snap.CpuPackageTemp = acpiTemp;
@@ -643,15 +680,42 @@ public class HardwareEngine : IDisposable
                 for (int i = 0; i < totalThreads; i++)
                 {
                     string coreType = "Core";
+                    int coreNum = i + 1;
+                    int smtThreadNum = 1;
+                    bool isSmt = false;
                     if (topology.ThreadToCoreMap.TryGetValue(i, out var coreInfo))
+                    {
                         coreType = coreInfo.CoreType;
+                        if (coreType == "P-Core")
+                        {
+                            int pIdx = topology.PCores.IndexOf(coreInfo);
+                            coreNum = pIdx >= 0 ? pIdx + 1 : (coreInfo.CoreIndex + 1);
+                        }
+                        else if (coreType == "E-Core")
+                        {
+                            int eIdx = topology.ECores.IndexOf(coreInfo);
+                            coreNum = eIdx >= 0 ? eIdx + 1 : (coreInfo.CoreIndex + 1);
+                        }
+                        else
+                        {
+                            coreNum = coreInfo.CoreIndex + 1;
+                        }
+                        isSmt = coreInfo.IsSmt;
+                        int idxInCore = coreInfo.LogicalProcessorIndices.IndexOf(i);
+                        smtThreadNum = idxInCore >= 0 ? idxInCore + 1 : 1;
+                    }
                     else if (snap.CpuName.Contains("Ryzen", StringComparison.OrdinalIgnoreCase) || snap.CpuName.Contains("AMD", StringComparison.OrdinalIgnoreCase))
+                    {
                         coreType = "Zen Core";
+                    }
 
                     // Zero Synthetic Fallbacks: Missing individual sensors are set to 0f (rendered as — or N/A).
                     snap.CpuCores.Add(new CoreTelemetry
                     {
                         Index = i + 1,
+                        CoreNumber = coreNum,
+                        SmtThreadNumber = smtThreadNum,
+                        IsSmt = isSmt,
                         CoreType = coreType,
                         Load = coreLoads.GetValueOrDefault(i, 0f),
                         Temp = coreTemps.GetValueOrDefault(i, 0f),
@@ -692,19 +756,24 @@ public class HardwareEngine : IDisposable
     }
     catch { }
 
-        // 2. GPU Telemetry
+        // 2. GPU Telemetry (Prefer discrete GPU over integrated graphics when multiple GPUs exist)
         try
         {
             var gpu = _computer.Hardware.FirstOrDefault(h => h.HardwareType == HardwareType.GpuNvidia)
-                   ?? _computer.Hardware.FirstOrDefault(h => h.HardwareType == HardwareType.GpuAmd)
-                   ?? _computer.Hardware.FirstOrDefault(h => h.HardwareType == HardwareType.GpuIntel);
+                   ?? _computer.Hardware.Where(h => h.HardwareType == HardwareType.GpuAmd)
+                        .OrderByDescending(h => !h.Name.Equals("AMD Radeon(TM) Graphics", StringComparison.OrdinalIgnoreCase))
+                        .ThenByDescending(h => h.Sensors.Any(s => s.SensorType == SensorType.SmallData && s.Name.Contains("Total", StringComparison.OrdinalIgnoreCase) && s.Value > 2048))
+                        .FirstOrDefault()
+                   ?? _computer.Hardware.Where(h => h.HardwareType == HardwareType.GpuIntel)
+                        .OrderByDescending(h => h.Name.Contains("Arc", StringComparison.OrdinalIgnoreCase))
+                        .FirstOrDefault();
 
             if (gpu != null)
             {
                 snap.GpuAvailable = true;
                 snap.GpuName = gpu.Name;
 
-                foreach (var sensor in gpu.Sensors.Concat(gpu.SubHardware.SelectMany(sh => { sh.Update(); return sh.Sensors; })))
+                foreach (var sensor in gpu.Sensors.Concat(gpu.SubHardware.SelectMany(sh => sh.Sensors)))
                 {
                     if (!sensor.Value.HasValue) continue;
                     var val = sensor.Value.Value;
@@ -777,7 +846,7 @@ public class HardwareEngine : IDisposable
                                 if (snap.GpuVramUsedGb == 0 || sensor.Name.Contains("GPU Memory Used", StringComparison.OrdinalIgnoreCase))
                                     snap.GpuVramUsedGb = val / 1024f;
                             }
-                            else if (sensor.Name.Contains("GPU Memory Total", StringComparison.OrdinalIgnoreCase))
+                            else if (sensor.Name.Contains("GPU Memory Total", StringComparison.OrdinalIgnoreCase) || sensor.Name.Contains("Dedicated Memory Total", StringComparison.OrdinalIgnoreCase))
                             {
                                 snap.GpuVramTotalGb = val / 1024f;
                             }
@@ -789,6 +858,12 @@ public class HardwareEngine : IDisposable
                                 snap.GpuFanSpeedPercent = val;
                             break;
                     }
+                }
+
+                // Universal fallback for Intel/AMD iGPUs that expose D3D 3D/Compute load without a dedicated "GPU Core" sensor
+                if (snap.GpuCoreUtil <= 0f && (snap.Gpu3dUtil > 0f || snap.GpuComputeUtil > 0f))
+                {
+                    snap.GpuCoreUtil = Math.Max(snap.Gpu3dUtil, snap.GpuComputeUtil);
                 }
 
                 if (snap.GpuVramTotalGb > 0 && snap.GpuVramUsedGb > 0)
@@ -988,29 +1063,65 @@ public class HardwareEngine : IDisposable
         }
         catch { }
 
-        // Always Enumerate Logical Partitions (C:\, P:\, etc.)
+        // Always Enumerate Logical Partitions (C:\, P:\, etc.) — refresh volume capacity/metadata every 10s, poll I/O every 1s
         try
         {
-            foreach (var drive in DriveInfo.GetDrives())
+            var nowUtc = DateTime.UtcNow;
+            if (_cachedPartitions.Count == 0 || (nowUtc - _lastDrivePartitionRefresh).TotalSeconds >= 10.0)
             {
-                if (!drive.IsReady || drive.DriveType == DriveType.CDRom || drive.DriveType == DriveType.NoRootDirectory) continue;
+                _lastDrivePartitionRefresh = nowUtc;
+                _cachedPartitions.Clear();
+                foreach (var drive in DriveInfo.GetDrives())
+                {
+                    try
+                    {
+                        if (drive.DriveType == DriveType.CDRom ||
+                            drive.DriveType == DriveType.NoRootDirectory ||
+                            drive.DriveType == DriveType.Network ||
+                            !drive.IsReady)
+                        {
+                            continue;
+                        }
 
-                double totalBytes = drive.TotalSize;
-                double freeBytes = drive.AvailableFreeSpace;
-                float totalGb = (float)(totalBytes / (1024.0 * 1024.0 * 1024.0));
-                float freeGb = (float)(freeBytes / (1024.0 * 1024.0 * 1024.0));
-                float usedGb = Math.Max(0f, totalGb - freeGb);
-                float usedPercent = totalGb > 0 ? (usedGb / totalGb) * 100f : 0f;
+                        double totalBytes = drive.TotalSize;
+                        double freeBytes = drive.AvailableFreeSpace;
+                        float totalGb = (float)(totalBytes / (1024.0 * 1024.0 * 1024.0));
+                        float freeGb = (float)(freeBytes / (1024.0 * 1024.0 * 1024.0));
 
-                string volLabel = string.IsNullOrWhiteSpace(drive.VolumeLabel) ? (drive.DriveType == DriveType.Removable ? "USB Drive" : "Local Disk") : drive.VolumeLabel;
-                string fileSys = drive.DriveFormat ?? "NTFS";
+                        string volLabel = string.IsNullOrWhiteSpace(drive.VolumeLabel)
+                            ? (drive.DriveType == DriveType.Removable ? "USB Drive" : "Local Disk")
+                            : drive.VolumeLabel;
+                        string fileSys = drive.DriveFormat ?? "NTFS";
 
-                var (busType, isHdd, isRem) = GetDriveMediaDescriptor(drive.Name);
-                bool isRemovable = isRem || (drive.DriveType == DriveType.Removable);
-                int devNum = GetDiskDeviceNumber(drive.Name);
+                        var (busType, isHdd, isRem) = GetDriveMediaDescriptor(drive.Name);
+                        bool isRemovable = isRem || (drive.DriveType == DriveType.Removable);
+                        int devNum = GetDiskDeviceNumber(drive.Name);
 
-                string driveTypeStr = isRemovable ? "USB Flash Drive" : (isHdd ? $"{busType} HDD" : $"{busType} SSD");
-                string physicalModel = isRemovable ? "USB Removable Storage" : (isHdd ? $"{busType} Hard Disk" : "Internal SSD");
+                        _cachedPartitions.Add(new CachedDrivePartition
+                        {
+                            DriveLetter = drive.Name,
+                            VolumeLabel = volLabel,
+                            FileSystem = fileSys,
+                            BusType = busType,
+                            IsHdd = isHdd,
+                            IsRemovable = isRemovable,
+                            DeviceNumber = devNum,
+                            TotalGb = totalGb,
+                            FreeGb = freeGb
+                        });
+                    }
+                    catch { }
+                }
+            }
+
+            for (int i = 0; i < _cachedPartitions.Count; i++)
+            {
+                var cp = _cachedPartitions[i];
+                float usedGb = Math.Max(0f, cp.TotalGb - cp.FreeGb);
+                float usedPercent = cp.TotalGb > 0 ? (usedGb / cp.TotalGb) * 100f : 0f;
+
+                string driveTypeStr = cp.IsRemovable ? "USB Flash Drive" : (cp.IsHdd ? $"{cp.BusType} HDD" : $"{cp.BusType} SSD");
+                string physicalModel = cp.IsRemovable ? "USB Flash Disk" : (cp.IsHdd ? $"{cp.BusType} Hard Disk" : "Internal SSD");
                 bool hasSmart = false;
                 float healthPct = 0f;
                 float tbw = 0f;
@@ -1018,50 +1129,42 @@ public class HardwareEngine : IDisposable
                 float dRead = 0f;
                 float dWrite = 0f;
 
-                if (!isRemovable)
+                if (!cp.IsRemovable)
                 {
-                    int targetIdx = (devNum >= 0 && devNum < physicalDisks.Count) ? devNum : 0;
+                    int targetIdx = (cp.DeviceNumber >= 0 && cp.DeviceNumber < physicalDisks.Count) ? cp.DeviceNumber : 0;
                     if (physTelemetry.TryGetValue(targetIdx, out var pt))
                     {
                         physicalModel = pt.Name;
                         dTemp = pt.Temp;
                         hasSmart = pt.HasSmart;
                         healthPct = pt.Health;
-                        tbw = isHdd ? 0f : pt.Tbw;
+                        tbw = cp.IsHdd ? 0f : pt.Tbw;
                         dRead = pt.ReadMB;
                         dWrite = pt.WriteMB;
                     }
                 }
-                else
-                {
-                    physicalModel = "USB Flash Disk";
-                    hasSmart = false;
-                    healthPct = 0f;
-                    tbw = 0f;
-                    dTemp = 0f;
-                }
 
                 // Get per-partition real-time read/write throughput from performance counter
-                var (driveRead, driveWrite) = _diskIoTracker.GetDriveThroughput(drive.Name);
+                var (driveRead, driveWrite) = _diskIoTracker.GetDriveThroughput(cp.DriveLetter);
                 if (driveRead > 0 || driveWrite > 0 || dRead == 0)
                 {
                     dRead = driveRead;
                     dWrite = driveWrite;
                 }
 
-                string healthStatus = hasSmart ? (healthPct >= 70f ? "Good" : (healthPct >= 50f ? "Caution" : "Warning")) : (isHdd ? "Good" : "");
+                string healthStatus = hasSmart ? (healthPct >= 70f ? "Good" : (healthPct >= 50f ? "Caution" : "Warning")) : (cp.IsHdd ? "Good" : "");
 
                 snap.Disks.Add(new DiskTelemetry
                 {
-                    DriveLetter = drive.Name,
-                    VolumeLabel = volLabel,
-                    FileSystem = fileSys,
+                    DriveLetter = cp.DriveLetter,
+                    VolumeLabel = cp.VolumeLabel,
+                    FileSystem = cp.FileSystem,
                     PhysicalModel = physicalModel,
                     DriveTypeStr = driveTypeStr,
-                    IsRemovable = isRemovable,
-                    Name = $"{drive.Name} [{volLabel}]",
-                    TotalGb = totalGb,
-                    FreeGb = freeGb,
+                    IsRemovable = cp.IsRemovable,
+                    Name = $"{cp.DriveLetter} [{cp.VolumeLabel}]",
+                    TotalGb = cp.TotalGb,
+                    FreeGb = cp.FreeGb,
                     UsedGb = usedGb,
                     UsedPercent = usedPercent,
                     Temperature = dTemp,
@@ -1197,9 +1300,9 @@ public class HardwareEngine : IDisposable
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
-    private class MEMORYSTATUSEX
+    private struct MEMORYSTATUSEX
     {
-        public uint dwLength = (uint)Marshal.SizeOf(typeof(MEMORYSTATUSEX));
+        public uint dwLength;
         public uint dwMemoryLoad;
         public ulong ullTotalPhys;
         public ulong ullAvailPhys;
@@ -1211,14 +1314,14 @@ public class HardwareEngine : IDisposable
     }
 
     [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-    private static extern bool GlobalMemoryStatusEx([In, Out] MEMORYSTATUSEX lpBuffer);
+    private static extern bool GlobalMemoryStatusEx(ref MEMORYSTATUSEX lpBuffer);
 
     private static (float TotalGb, float UsedGb) GetWindowsPhysicalMemory()
     {
         try
         {
-            var mem = new MEMORYSTATUSEX();
-            if (GlobalMemoryStatusEx(mem))
+            var mem = new MEMORYSTATUSEX { dwLength = (uint)Marshal.SizeOf<MEMORYSTATUSEX>() };
+            if (GlobalMemoryStatusEx(ref mem))
             {
                 float total = mem.ullTotalPhys / (1024f * 1024f * 1024f);
                 float avail = mem.ullAvailPhys / (1024f * 1024f * 1024f);
@@ -1258,31 +1361,6 @@ public class HardwareEngine : IDisposable
         }
         catch { }
         return (false, true, 0, null);
-    }
-
-    private static float GetAcpiThermalZoneTemp()
-    {
-        try
-        {
-            using var searcher = new System.Management.ManagementObjectSearcher(
-                @"root\cimv2",
-                "SELECT Temperature, HighPrecisionTemperature FROM Win32_PerfFormattedData_Counters_ThermalZoneInformation");
-            foreach (var obj in searcher.Get())
-            {
-                if (obj["HighPrecisionTemperature"] is uint hp && hp > 2732)
-                {
-                    float degC = (hp - 2732f) / 10f;
-                    if (degC >= 20f && degC <= 115f) return degC;
-                }
-                if (obj["Temperature"] is uint k && k > 273)
-                {
-                    float degC = k - 273.15f;
-                    if (degC >= 20f && degC <= 115f) return degC;
-                }
-            }
-        }
-        catch { }
-        return 0f;
     }
 
     public void Dispose()

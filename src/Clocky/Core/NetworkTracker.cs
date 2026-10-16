@@ -20,12 +20,15 @@ public class NetworkTracker : IDisposable
         public DateTime LastSampleTime { get; set; }
         public float CurrentDownSpeedKBps { get; set; }
         public float CurrentUpSpeedKBps { get; set; }
-        public List<float> DownloadHistory { get; } = new();
-        public List<float> UploadHistory { get; } = new();
+        public List<float> DownloadHistory { get; } = new(MaxSparklinePoints + 1);
+        public List<float> UploadHistory { get; } = new(MaxSparklinePoints + 1);
+        public NetworkInterfaceTelemetry? CachedTelemetry { get; set; }
     }
 
     private readonly Dictionary<string, InterfaceState> _states = new();
     private DateTime _lastPollTime = DateTime.UtcNow;
+    private DateTime _lastTopologyRefresh = DateTime.MinValue;
+    private NetworkInterface[] _cachedNics = Array.Empty<NetworkInterface>();
     private const int MaxSparklinePoints = 40;
 
     public bool DetailedMode { get; set; } = false;
@@ -56,179 +59,237 @@ public class NetworkTracker : IDisposable
         if (globalDeltaSec <= 0.001) globalDeltaSec = 1.0;
         _lastPollTime = now;
 
-        var resultList = new List<NetworkInterfaceTelemetry>();
+        bool refreshTopology = _cachedNics.Length == 0 ||
+                               (DetailedMode && _lastDetailedInterfaces.Count == 0) ||
+                               (now - _lastTopologyRefresh).TotalSeconds >= 10.0;
+
         float totalDownKBps = 0f;
         float totalUpKBps = 0f;
         ulong totalBytesRecv = 0;
         ulong totalBytesSent = 0;
-        string primaryName = "No Network";
-        string primaryIp = "";
-        int bestIfIndex = GetTargetIfIndex();
-        int highestPrimaryScore = -1;
+        string primaryName = _lastPrimaryName;
+        string primaryIp = _lastPrimaryIp;
 
         try
         {
-            var interfaces = NetworkInterface.GetAllNetworkInterfaces();
-
-            foreach (var nic in interfaces)
+            if (refreshTopology)
             {
-                // Skip software loopback
-                if (nic.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
+                _lastTopologyRefresh = now;
+                var allNics = NetworkInterface.GetAllNetworkInterfaces();
+                var validNics = new List<NetworkInterface>(allNics.Length);
+                var resultList = new List<NetworkInterfaceTelemetry>(allNics.Length);
+                int bestIfIndex = GetTargetIfIndex();
+                int highestPrimaryScore = -1;
+                primaryName = "No Network";
+                primaryIp = "";
 
-                // Skip NDIS lightweight filter miniports and packet scheduler clones
-                if (IsSubFilterDriver(nic)) continue;
-
-                var ipProps = nic.GetIPProperties();
-                var stats = nic.GetIPStatistics();
-
-                long curRecv = stats.BytesReceived;
-                long curSent = stats.BytesSent;
-
-                totalBytesRecv += (ulong)Math.Max(0, curRecv);
-                totalBytesSent += (ulong)Math.Max(0, curSent);
-
-                if (!_states.TryGetValue(nic.Id, out var state))
+                foreach (var nic in allNics)
                 {
-                    state = new InterfaceState
+                    if (nic.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
+                    if (IsSubFilterDriver(nic)) continue;
+
+                    validNics.Add(nic);
+                    var stats = nic.GetIPStatistics();
+                    long curRecv = stats.BytesReceived;
+                    long curSent = stats.BytesSent;
+
+                    totalBytesRecv += (ulong)Math.Max(0, curRecv);
+                    totalBytesSent += (ulong)Math.Max(0, curSent);
+
+                    if (!_states.TryGetValue(nic.Id, out var state))
                     {
-                        Id = nic.Id,
-                        LastBytesReceived = curRecv,
-                        LastBytesSent = curSent,
-                        LastSampleTime = now
-                    };
-                    _states[nic.Id] = state;
-                }
-
-                double deltaSec = (now - state.LastSampleTime).TotalSeconds;
-                if (deltaSec <= 0.001) deltaSec = globalDeltaSec;
-
-                long diffRecv = curRecv - state.LastBytesReceived;
-                long diffSent = curSent - state.LastBytesSent;
-
-                state.LastBytesReceived = curRecv;
-                state.LastBytesSent = curSent;
-                state.LastSampleTime = now;
-
-                float downKBps = 0f;
-                float upKBps = 0f;
-
-                if (diffRecv >= 0 && deltaSec > 0)
-                {
-                    downKBps = (float)((diffRecv / 1024.0) / deltaSec);
-                }
-                if (diffSent >= 0 && deltaSec > 0)
-                {
-                    upKBps = (float)((diffSent / 1024.0) / deltaSec);
-                }
-
-                state.CurrentDownSpeedKBps = downKBps;
-                state.CurrentUpSpeedKBps = upKBps;
-
-                state.DownloadHistory.Add(downKBps);
-                if (state.DownloadHistory.Count > MaxSparklinePoints) state.DownloadHistory.RemoveAt(0);
-
-                state.UploadHistory.Add(upKBps);
-                if (state.UploadHistory.Count > MaxSparklinePoints) state.UploadHistory.RemoveAt(0);
-
-                // Add to aggregate totals if interface is operational
-                if (nic.OperationalStatus == OperationalStatus.Up)
-                {
-                    totalDownKBps += downKBps;
-                    totalUpKBps += upKBps;
-                }
-
-                // If not in detailed mode (Network tab closed) and we already have cached details, skip rebuilding
-                if (!DetailedMode && _lastDetailedInterfaces.Count > 0) continue;
-
-                // Extract IP information
-                string ipv4 = "";
-                string ipv6 = "";
-                foreach (var u in ipProps.UnicastAddresses)
-                {
-                    if (u.Address.AddressFamily == AddressFamily.InterNetwork)
-                    {
-                        if (string.IsNullOrEmpty(ipv4)) ipv4 = u.Address.ToString();
+                        state = new InterfaceState
+                        {
+                            Id = nic.Id,
+                            LastBytesReceived = curRecv,
+                            LastBytesSent = curSent,
+                            LastSampleTime = now
+                        };
+                        _states[nic.Id] = state;
                     }
-                    else if (u.Address.AddressFamily == AddressFamily.InterNetworkV6)
+
+                    double deltaSec = (now - state.LastSampleTime).TotalSeconds;
+                    if (deltaSec <= 0.001) deltaSec = globalDeltaSec;
+
+                    long diffRecv = curRecv - state.LastBytesReceived;
+                    long diffSent = curSent - state.LastBytesSent;
+
+                    state.LastBytesReceived = curRecv;
+                    state.LastBytesSent = curSent;
+                    state.LastSampleTime = now;
+
+                    float downKBps = (diffRecv >= 0 && deltaSec > 0) ? (float)((diffRecv / 1024.0) / deltaSec) : 0f;
+                    float upKBps = (diffSent >= 0 && deltaSec > 0) ? (float)((diffSent / 1024.0) / deltaSec) : 0f;
+
+                    state.CurrentDownSpeedKBps = downKBps;
+                    state.CurrentUpSpeedKBps = upKBps;
+
+                    state.DownloadHistory.Add(downKBps);
+                    if (state.DownloadHistory.Count > MaxSparklinePoints) state.DownloadHistory.RemoveAt(0);
+
+                    state.UploadHistory.Add(upKBps);
+                    if (state.UploadHistory.Count > MaxSparklinePoints) state.UploadHistory.RemoveAt(0);
+
+                    bool isUp = nic.OperationalStatus == OperationalStatus.Up;
+                    if (isUp)
                     {
-                        if (string.IsNullOrEmpty(ipv6) && !u.Address.IsIPv6LinkLocal) ipv6 = u.Address.ToString();
+                        totalDownKBps += downKBps;
+                        totalUpKBps += upKBps;
+                    }
+
+                    var ipProps = nic.GetIPProperties();
+                    string ipv4 = "";
+                    string ipv6 = "";
+                    foreach (var u in ipProps.UnicastAddresses)
+                    {
+                        if (u.Address.AddressFamily == AddressFamily.InterNetwork)
+                        {
+                            if (string.IsNullOrEmpty(ipv4)) ipv4 = u.Address.ToString();
+                        }
+                        else if (u.Address.AddressFamily == AddressFamily.InterNetworkV6)
+                        {
+                            if (string.IsNullOrEmpty(ipv6) && !u.Address.IsIPv6LinkLocal) ipv6 = u.Address.ToString();
+                        }
+                    }
+                    if (string.IsNullOrEmpty(ipv6))
+                    {
+                        var linkLocal = ipProps.UnicastAddresses.FirstOrDefault(u => u.Address.AddressFamily == AddressFamily.InterNetworkV6);
+                        if (linkLocal != null) ipv6 = linkLocal.Address.ToString();
+                    }
+
+                    string gateway = ipProps.GatewayAddresses.FirstOrDefault()?.Address.ToString() ?? "";
+                    var dnsList = ipProps.DnsAddresses.Where(d => d.AddressFamily == AddressFamily.InterNetwork).Select(d => d.ToString()).ToList();
+                    string dnsStr = dnsList.Count > 0 ? string.Join(", ", dnsList) : "";
+
+                    var macBytes = nic.GetPhysicalAddress().GetAddressBytes();
+                    string mac = macBytes.Length > 0 ? string.Join(":", macBytes.Select(b => b.ToString("X2"))) : "";
+
+                    long rawSpeed = nic.Speed;
+                    string speedStr = rawSpeed > 0 ? FormatLinkSpeed(rawSpeed) : "Unknown Link";
+                    string typeDesc = GetInterfaceTypeString(nic);
+
+                    var item = state.CachedTelemetry ?? new NetworkInterfaceTelemetry { Id = nic.Id };
+                    item.Name = nic.Name;
+                    item.Description = nic.Description;
+                    item.InterfaceType = typeDesc;
+                    item.IsUp = isUp;
+                    item.Status = isUp ? "Connected" : "Disconnected";
+                    item.SpeedMbps = rawSpeed > 0 ? (float)(rawSpeed / 1_000_000.0) : 0f;
+                    item.SpeedFormatted = speedStr;
+                    item.Ipv4Address = ipv4;
+                    item.Ipv6Address = ipv6;
+                    item.Gateway = gateway;
+                    item.Dns = dnsStr;
+                    item.MacAddress = mac;
+                    item.DownloadSpeedKBps = downKBps;
+                    item.UploadSpeedKBps = upKBps;
+                    item.DownloadSpeedFormatted = FormatSpeed(downKBps);
+                    item.UploadSpeedFormatted = FormatSpeed(upKBps);
+                    item.TotalBytesReceived = (ulong)Math.Max(0, curRecv);
+                    item.TotalBytesSent = (ulong)Math.Max(0, curSent);
+                    item.FormattedTotalReceived = FormatBytes((ulong)Math.Max(0, curRecv));
+                    item.FormattedTotalSent = FormatBytes((ulong)Math.Max(0, curSent));
+                    item.DownloadHistory = state.DownloadHistory;
+                    item.UploadHistory = state.UploadHistory;
+
+                    state.CachedTelemetry = item;
+                    resultList.Add(item);
+
+                    int ifIdx = -1;
+                    try { ifIdx = ipProps.GetIPv4Properties()?.Index ?? -1; } catch { }
+
+                    bool isVirtual = typeDesc.Contains("VPN", StringComparison.OrdinalIgnoreCase) ||
+                                     typeDesc.Contains("Virtual", StringComparison.OrdinalIgnoreCase) ||
+                                     nic.Description.Contains("Virtual", StringComparison.OrdinalIgnoreCase) ||
+                                     nic.Description.Contains("ZeroTier", StringComparison.OrdinalIgnoreCase) ||
+                                     nic.Description.Contains("Tailscale", StringComparison.OrdinalIgnoreCase);
+
+                    int primaryScore = 0;
+                    if (ifIdx > 0 && ifIdx == bestIfIndex) primaryScore += 1000;
+                    if (!string.IsNullOrEmpty(gateway) && !gateway.StartsWith("0.0.0.0")) primaryScore += 500;
+                    if (!isVirtual) primaryScore += 200;
+                    if (nic.NetworkInterfaceType == NetworkInterfaceType.Ethernet || nic.NetworkInterfaceType == NetworkInterfaceType.GigabitEthernet) primaryScore += 50;
+                    else if (nic.NetworkInterfaceType == NetworkInterfaceType.Wireless80211) primaryScore += 40;
+                    if (!string.IsNullOrEmpty(ipv4)) primaryScore += 10;
+
+                    if (isUp && !string.IsNullOrEmpty(ipv4) && !ipv4.StartsWith("169.254") && primaryScore > highestPrimaryScore)
+                    {
+                        highestPrimaryScore = primaryScore;
+                        primaryName = $"{nic.Name} ({typeDesc})";
+                        primaryIp = ipv4;
                     }
                 }
-                if (string.IsNullOrEmpty(ipv6))
+
+                _cachedNics = validNics.ToArray();
+                resultList.Sort((a, b) =>
                 {
-                    var linkLocal = ipProps.UnicastAddresses.FirstOrDefault(u => u.Address.AddressFamily == AddressFamily.InterNetworkV6);
-                    if (linkLocal != null) ipv6 = linkLocal.Address.ToString();
-                }
+                    int upCmp = b.IsUp.CompareTo(a.IsUp);
+                    if (upCmp != 0) return upCmp;
+                    int bytesCmp = (b.TotalBytesReceived + b.TotalBytesSent).CompareTo(a.TotalBytesReceived + a.TotalBytesSent);
+                    return bytesCmp != 0 ? bytesCmp : string.Compare(a.Name, b.Name, StringComparison.Ordinal);
+                });
 
-                // Gateway & DNS
-                string gateway = ipProps.GatewayAddresses.FirstOrDefault()?.Address.ToString() ?? "";
-                var dnsList = ipProps.DnsAddresses.Where(d => d.AddressFamily == AddressFamily.InterNetwork).Select(d => d.ToString()).ToList();
-                string dnsStr = dnsList.Count > 0 ? string.Join(", ", dnsList) : "";
-
-                // Formatted MAC
-                var macBytes = nic.GetPhysicalAddress().GetAddressBytes();
-                string mac = macBytes.Length > 0 ? string.Join(":", macBytes.Select(b => b.ToString("X2"))) : "";
-
-                // Link Speed
-                long rawSpeed = nic.Speed;
-                string speedStr = rawSpeed > 0 ? FormatLinkSpeed(rawSpeed) : "Unknown Link";
-
-                // Type Descriptor
-                string typeDesc = GetInterfaceTypeString(nic);
-                bool isUp = nic.OperationalStatus == OperationalStatus.Up;
-
-                var item = new NetworkInterfaceTelemetry
+                _lastDetailedInterfaces = resultList;
+                _lastPrimaryName = primaryName;
+                _lastPrimaryIp = primaryIp;
+            }
+            else
+            {
+                // Fast-path 1s poll: read only GetIPStatistics() on cached interfaces (<2ms vs 65ms)
+                foreach (var nic in _cachedNics)
                 {
-                    Id = nic.Id,
-                    Name = nic.Name,
-                    Description = nic.Description,
-                    InterfaceType = typeDesc,
-                    IsUp = isUp,
-                    Status = isUp ? "Connected" : "Disconnected",
-                    SpeedMbps = rawSpeed > 0 ? (float)(rawSpeed / 1_000_000.0) : 0f,
-                    SpeedFormatted = speedStr,
-                    Ipv4Address = ipv4,
-                    Ipv6Address = ipv6,
-                    Gateway = gateway,
-                    Dns = dnsStr,
-                    MacAddress = mac,
-                    DownloadSpeedKBps = downKBps,
-                    UploadSpeedKBps = upKBps,
-                    DownloadSpeedFormatted = FormatSpeed(downKBps),
-                    UploadSpeedFormatted = FormatSpeed(upKBps),
-                    TotalBytesReceived = (ulong)Math.Max(0, curRecv),
-                    TotalBytesSent = (ulong)Math.Max(0, curSent),
-                    FormattedTotalReceived = FormatBytes((ulong)Math.Max(0, curRecv)),
-                    FormattedTotalSent = FormatBytes((ulong)Math.Max(0, curSent)),
-                    DownloadHistory = new List<float>(state.DownloadHistory),
-                    UploadHistory = new List<float>(state.UploadHistory)
-                };
+                    var stats = nic.GetIPStatistics();
+                    long curRecv = stats.BytesReceived;
+                    long curSent = stats.BytesSent;
 
-                resultList.Add(item);
+                    totalBytesRecv += (ulong)Math.Max(0, curRecv);
+                    totalBytesSent += (ulong)Math.Max(0, curSent);
 
-                // Determine primary network using kernel routing & gateway scoring
-                int ifIdx = -1;
-                try { ifIdx = ipProps.GetIPv4Properties()?.Index ?? -1; } catch { }
+                    if (!_states.TryGetValue(nic.Id, out var state)) continue;
 
-                bool isVirtual = typeDesc.Contains("VPN", StringComparison.OrdinalIgnoreCase) ||
-                                 typeDesc.Contains("Virtual", StringComparison.OrdinalIgnoreCase) ||
-                                 nic.Description.Contains("Virtual", StringComparison.OrdinalIgnoreCase) ||
-                                 nic.Description.Contains("ZeroTier", StringComparison.OrdinalIgnoreCase) ||
-                                 nic.Description.Contains("Tailscale", StringComparison.OrdinalIgnoreCase);
+                    double deltaSec = (now - state.LastSampleTime).TotalSeconds;
+                    if (deltaSec <= 0.001) deltaSec = globalDeltaSec;
 
-                int primaryScore = 0;
-                if (ifIdx > 0 && ifIdx == bestIfIndex) primaryScore += 1000;
-                if (!string.IsNullOrEmpty(gateway) && !gateway.StartsWith("0.0.0.0")) primaryScore += 500;
-                if (!isVirtual) primaryScore += 200;
-                if (nic.NetworkInterfaceType == NetworkInterfaceType.Ethernet || nic.NetworkInterfaceType == NetworkInterfaceType.GigabitEthernet) primaryScore += 50;
-                else if (nic.NetworkInterfaceType == NetworkInterfaceType.Wireless80211) primaryScore += 40;
-                if (!string.IsNullOrEmpty(ipv4)) primaryScore += 10;
+                    long diffRecv = curRecv - state.LastBytesReceived;
+                    long diffSent = curSent - state.LastBytesSent;
 
-                if (isUp && !string.IsNullOrEmpty(ipv4) && !ipv4.StartsWith("169.254") && primaryScore > highestPrimaryScore)
-                {
-                    highestPrimaryScore = primaryScore;
-                    primaryName = $"{nic.Name} ({typeDesc})";
-                    primaryIp = ipv4;
+                    state.LastBytesReceived = curRecv;
+                    state.LastBytesSent = curSent;
+                    state.LastSampleTime = now;
+
+                    float downKBps = (diffRecv >= 0 && deltaSec > 0) ? (float)((diffRecv / 1024.0) / deltaSec) : 0f;
+                    float upKBps = (diffSent >= 0 && deltaSec > 0) ? (float)((diffSent / 1024.0) / deltaSec) : 0f;
+
+                    state.CurrentDownSpeedKBps = downKBps;
+                    state.CurrentUpSpeedKBps = upKBps;
+
+                    state.DownloadHistory.Add(downKBps);
+                    if (state.DownloadHistory.Count > MaxSparklinePoints) state.DownloadHistory.RemoveAt(0);
+
+                    state.UploadHistory.Add(upKBps);
+                    if (state.UploadHistory.Count > MaxSparklinePoints) state.UploadHistory.RemoveAt(0);
+
+                    bool isUp = nic.OperationalStatus == OperationalStatus.Up;
+                    if (isUp)
+                    {
+                        totalDownKBps += downKBps;
+                        totalUpKBps += upKBps;
+                    }
+
+                    if (state.CachedTelemetry != null)
+                    {
+                        var item = state.CachedTelemetry;
+                        item.IsUp = isUp;
+                        item.Status = isUp ? "Connected" : "Disconnected";
+                        item.DownloadSpeedKBps = downKBps;
+                        item.UploadSpeedKBps = upKBps;
+                        item.DownloadSpeedFormatted = FormatSpeed(downKBps);
+                        item.UploadSpeedFormatted = FormatSpeed(upKBps);
+                        item.TotalBytesReceived = (ulong)Math.Max(0, curRecv);
+                        item.TotalBytesSent = (ulong)Math.Max(0, curSent);
+                        item.FormattedTotalReceived = FormatBytes((ulong)Math.Max(0, curRecv));
+                        item.FormattedTotalSent = FormatBytes((ulong)Math.Max(0, curSent));
+                    }
                 }
             }
         }
@@ -237,23 +298,7 @@ public class NetworkTracker : IDisposable
             Debug.WriteLine($"[Clocky] Network poll error: {ex.Message}");
         }
 
-        if (!DetailedMode && _lastDetailedInterfaces.Count > 0)
-        {
-            return (_lastDetailedInterfaces, totalDownKBps, totalUpKBps, totalBytesRecv, totalBytesSent, _lastPrimaryName, _lastPrimaryIp);
-        }
-
-        // Sort interfaces: Connected first, then by total cumulative throughput (BytesRecv + BytesSent), then by name
-        resultList = resultList
-            .OrderByDescending(n => n.IsUp)
-            .ThenByDescending(n => n.TotalBytesReceived + n.TotalBytesSent)
-            .ThenBy(n => n.Name)
-            .ToList();
-
-        _lastDetailedInterfaces = resultList;
-        _lastPrimaryName = primaryName;
-        _lastPrimaryIp = primaryIp;
-
-        return (resultList, totalDownKBps, totalUpKBps, totalBytesRecv, totalBytesSent, primaryName, primaryIp);
+        return (_lastDetailedInterfaces, totalDownKBps, totalUpKBps, totalBytesRecv, totalBytesSent, _lastPrimaryName, _lastPrimaryIp);
     }
 
     private static bool IsSubFilterDriver(NetworkInterface nic)

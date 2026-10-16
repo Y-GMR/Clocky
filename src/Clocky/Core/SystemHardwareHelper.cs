@@ -60,11 +60,15 @@ public static class SystemHardwareHelper
         return _cachedModelName;
     }
 
+    private static readonly System.Text.RegularExpressions.Regex s_igpuSuffixRegex = new(
+        @"\s*(?:with|w/)\s+(?:Radeon|Intel|AMD|Qualcomm|Adreno)?(?:\s+[\w\d]+)*\s+Graphics.*$",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+
     public static (string Type, int Speed, int ModuleCount, string Details) GetRamInfo()
     {
         if (_cachedRamInfo != null) return _cachedRamInfo.Value;
 
-        string ramType = "DDR5";
+        string ramType = "";
         int configuredSpeed = 0;
         int ratedSpeed = 0;
         int moduleCount = 0;
@@ -72,7 +76,7 @@ public static class SystemHardwareHelper
 
         try
         {
-            using var searcher = new ManagementObjectSearcher("SELECT Capacity, Speed, ConfiguredClockSpeed, SMBIOSMemoryType, MemoryType, Manufacturer, PartNumber FROM Win32_PhysicalMemory");
+            using var searcher = new ManagementObjectSearcher("SELECT Capacity, Speed, ConfiguredClockSpeed, SMBIOSMemoryType, MemoryType FROM Win32_PhysicalMemory");
             foreach (ManagementObject mo in searcher.Get())
             {
                 moduleCount++;
@@ -84,15 +88,30 @@ public static class SystemHardwareHelper
                 if (int.TryParse(mo["Speed"]?.ToString(), out int spd) && spd > 0)
                     ratedSpeed = Math.Max(ratedSpeed, spd);
 
-                if (int.TryParse(mo["SMBIOSMemoryType"]?.ToString(), out int smbiosType))
+                if (int.TryParse(mo["SMBIOSMemoryType"]?.ToString(), out int smbiosType) && smbiosType > 0)
                 {
                     ramType = smbiosType switch
                     {
-                        26 => "DDR4",
-                        34 => "DDR5",
-                        30 => "LPDDR4",
-                        35 => "LPDDR5",
+                        20 => "DDR",
+                        21 => "DDR2",
                         24 => "DDR3",
+                        26 => "DDR4",
+                        29 => "LPDDR3",
+                        30 => "LPDDR4",
+                        34 => "DDR5",
+                        35 => "LPDDR5",
+                        36 => "LPDDR5X",
+                        _ => ramType
+                    };
+                }
+                if (string.IsNullOrEmpty(ramType) && int.TryParse(mo["MemoryType"]?.ToString(), out int memType) && memType > 0)
+                {
+                    ramType = memType switch
+                    {
+                        20 => "DDR",
+                        21 => "DDR2",
+                        24 => "DDR3",
+                        26 => "DDR4",
                         _ => ramType
                     };
                 }
@@ -100,12 +119,26 @@ public static class SystemHardwareHelper
         }
         catch { }
 
-        long totalGb = (long)Math.Round((double)totalCapacity / (1024.0 * 1024.0 * 1024.0));
-        string details = moduleCount > 1 
-            ? $"{moduleCount}x {totalGb / Math.Max(1, moduleCount)} GB ({totalGb} GB {ramType})" 
-            : $"{totalGb} GB {ramType}";
-
         int activeSpeed = configuredSpeed > 0 ? configuredSpeed : ratedSpeed;
+        if (string.IsNullOrEmpty(ramType))
+        {
+            ramType = activeSpeed switch
+            {
+                >= 4400 => "DDR5",
+                >= 2133 => "DDR4",
+                >= 1066 => "DDR3",
+                > 0 => "DDR",
+                _ => "RAM"
+            };
+        }
+
+        long totalGb = (long)Math.Round((double)totalCapacity / (1024.0 * 1024.0 * 1024.0));
+        string details = totalGb > 0
+            ? (moduleCount > 1
+                ? $"{moduleCount}x {totalGb / Math.Max(1, moduleCount)} GB ({totalGb} GB {ramType})"
+                : $"{totalGb} GB {ramType}")
+            : ramType;
+
         _cachedRamInfo = (ramType, activeSpeed, moduleCount, details);
         return _cachedRamInfo.Value;
     }
@@ -119,7 +152,10 @@ public static class SystemHardwareHelper
             .Replace("Intel(R) Core(TM) ", "")
             .Replace("Intel Core ", "")
             .Replace("Intel ", "")
+            .Replace("AMD Ryzen AI ", "Ryzen AI ")
             .Replace("AMD Ryzen ", "Ryzen ")
+            .Replace("Snapdragon(R) ", "Snapdragon ")
+            .Replace("Qualcomm ", "")
             .Replace("14th Gen ", "")
             .Replace("13th Gen ", "")
             .Replace("12th Gen ", "")
@@ -136,11 +172,7 @@ public static class SystemHardwareHelper
             .Trim();
 
         // Strip integrated GPU marketing suffixes (e.g. "with Radeon 740M Graphics", "w/ Radeon Graphics")
-        name = System.Text.RegularExpressions.Regex.Replace(
-            name,
-            @"\s*(?:with|w/)\s+(?:Radeon|Intel|AMD)?(?:\s+[\w\d]+)*\s+Graphics.*$",
-            "",
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase).Trim();
+        name = s_igpuSuffixRegex.Replace(name, "").Trim();
 
         return name.Length > 20 ? name.Substring(0, 18).TrimEnd() + "..." : name;
     }
@@ -152,11 +184,13 @@ public static class SystemHardwareHelper
             .Replace("NVIDIA GeForce ", "")
             .Replace("NVIDIA ", "")
             .Replace(" Laptop GPU", "")
+            .Replace("AMD Radeon(TM) ", "Radeon ")
             .Replace("AMD Radeon ", "")
             .Replace("AMD ", "")
             .Replace("Intel(R) Arc(TM) ", "Arc ")
             .Replace("Intel Arc ", "Arc ")
             .Replace("Intel(R) ", "")
+            .Replace("Qualcomm(R) Adreno(TM) ", "Adreno ")
             .Replace(" Graphics", "")
             .Trim();
 
@@ -201,78 +235,33 @@ public static class SystemHardwareHelper
         public uint CurrentIdleState;
     }
 
-    private static System.Diagnostics.PerformanceCounter? _baseFreqCounter;
-    private static System.Diagnostics.PerformanceCounter? _totalPerfCounter;
-    private static readonly Dictionary<int, System.Diagnostics.PerformanceCounter> _corePerfCounters = new();
+    private static System.Diagnostics.PerformanceCounterCategory? _procInfoCategory;
     private static bool _cpuCountersInitAttempted = false;
     private static float _cachedBaseFrequency = 0f;
+    private static float _lastTotalCpuLoad = 0f;
+    private static Dictionary<string, System.Diagnostics.CounterSample> _prevPerfSamples = new(64);
+    private static Dictionary<string, System.Diagnostics.CounterSample> _currPerfSamples = new(64);
+    private static System.Diagnostics.CounterSample _prevTotalUtilSample;
+    private static bool _hasPrevTotalUtilSample;
 
-    private static void EnsureCpuCountersInitialized()
+    public static float LastTotalCpuLoad => _lastTotalCpuLoad;
+
+    private static void EnsureCpuCategoryInitialized()
     {
         if (_cpuCountersInitAttempted) return;
         _cpuCountersInitAttempted = true;
 
         try
         {
-            _baseFreqCounter = new System.Diagnostics.PerformanceCounter("Processor Information", "Processor Frequency", "_Total", true);
-            _baseFreqCounter.NextValue();
-        }
-        catch { }
-
-        try
-        {
-            _totalPerfCounter = new System.Diagnostics.PerformanceCounter("Processor Information", "% Processor Performance", "_Total", true);
-            _totalPerfCounter.NextValue();
-        }
-        catch { }
-
-        try
-        {
-            int count = Environment.ProcessorCount;
-            for (int i = 0; i < count; i++)
+            using var key = Registry.LocalMachine.OpenSubKey(@"HARDWARE\DESCRIPTION\System\CentralProcessor\0");
+            if (key?.GetValue("~MHz") is int mhz && mhz > 0)
             {
-                try
-                {
-                    var pc = new System.Diagnostics.PerformanceCounter("Processor Information", "% Processor Performance", $"0,{i}", true);
-                    pc.NextValue();
-                    _corePerfCounters[i] = pc;
-                }
-                catch { }
+                _cachedBaseFrequency = mhz;
             }
         }
         catch { }
-    }
 
-    public static (float DynamicFreqMhz, Dictionary<int, float> CoreClocks) GetProcessorClocks()
-    {
-        EnsureCpuCountersInitialized();
-
-        float baseMhz = _cachedBaseFrequency;
-        if (baseMhz <= 0 && _baseFreqCounter != null)
-        {
-            try
-            {
-                baseMhz = _baseFreqCounter.NextValue();
-                if (baseMhz > 0) _cachedBaseFrequency = baseMhz;
-            }
-            catch { }
-        }
-
-        if (baseMhz <= 0)
-        {
-            try
-            {
-                using var key = Registry.LocalMachine.OpenSubKey(@"HARDWARE\DESCRIPTION\System\CentralProcessor\0");
-                if (key?.GetValue("~MHz") is int mhz && mhz > 0)
-                {
-                    baseMhz = mhz;
-                    _cachedBaseFrequency = baseMhz;
-                }
-            }
-            catch { }
-        }
-
-        if (baseMhz <= 0)
+        if (_cachedBaseFrequency <= 0)
         {
             try
             {
@@ -281,8 +270,145 @@ public static class SystemHardwareHelper
                 int size = System.Runtime.InteropServices.Marshal.SizeOf<PROCESSOR_POWER_INFORMATION>() * count;
                 if (CallNtPowerInformation(ProcessorInformation, IntPtr.Zero, 0, info, size) == 0 && info[0].MaxMhz > 0)
                 {
-                    baseMhz = info[0].MaxMhz;
-                    _cachedBaseFrequency = baseMhz;
+                    _cachedBaseFrequency = info[0].MaxMhz;
+                }
+            }
+            catch { }
+        }
+
+        try
+        {
+            if (System.Diagnostics.PerformanceCounterCategory.Exists("Processor Information"))
+            {
+                _procInfoCategory = new System.Diagnostics.PerformanceCounterCategory("Processor Information");
+            }
+        }
+        catch { _procInfoCategory = null; }
+    }
+
+    private static int ParseLogicalCoreIndex(ReadOnlySpan<char> inst)
+    {
+        int commaIdx = inst.IndexOf(',');
+        if (commaIdx < 0) return -1;
+        var groupSpan = inst.Slice(0, commaIdx);
+        var procSpan = inst.Slice(commaIdx + 1);
+        if (procSpan.Equals("_Total", StringComparison.OrdinalIgnoreCase)) return -1;
+        if (!int.TryParse(groupSpan, out int group) || !int.TryParse(procSpan, out int proc)) return -1;
+        return group * 64 + proc;
+    }
+
+    public static (float DynamicFreqMhz, Dictionary<int, float> CoreClocks) GetProcessorClocks()
+    {
+        EnsureCpuCategoryInitialized();
+
+        float baseMhz = _cachedBaseFrequency;
+        var coreClocks = new Dictionary<int, float>(Environment.ProcessorCount);
+        float totalPerf = 0f;
+
+        if (_procInfoCategory != null)
+        {
+            try
+            {
+                var catData = _procInfoCategory.ReadCategory();
+
+                if (baseMhz <= 0 && catData.Contains("Processor Frequency"))
+                {
+                    var freqCol = catData["Processor Frequency"];
+                    if (freqCol.Contains("_Total"))
+                    {
+                        long rawFreq = freqCol["_Total"].RawValue;
+                        if (rawFreq > 0)
+                        {
+                            baseMhz = rawFreq;
+                            _cachedBaseFrequency = baseMhz;
+                        }
+                    }
+                }
+
+                // Universal fallback for Total CPU Load when LHM driver is unavailable
+                string? loadCounterName = catData.Contains("% Processor Utility")
+                    ? "% Processor Utility"
+                    : (catData.Contains("% Processor Time") ? "% Processor Time" : null);
+                if (loadCounterName != null)
+                {
+                    var loadCol = catData[loadCounterName];
+                    if (loadCol.Contains("_Total"))
+                    {
+                        var curLoadSample = loadCol["_Total"].Sample;
+                        if (_hasPrevTotalUtilSample)
+                        {
+                            float calcLoad = System.Diagnostics.CounterSample.Calculate(_prevTotalUtilSample, curLoadSample);
+                            if (float.IsFinite(calcLoad) && calcLoad >= 0f)
+                                _lastTotalCpuLoad = Math.Clamp(calcLoad, 0f, 100f);
+                        }
+                        _prevTotalUtilSample = curLoadSample;
+                        _hasPrevTotalUtilSample = true;
+                    }
+                }
+
+                if (baseMhz > 0 && catData.Contains("% Processor Performance"))
+                {
+                    var perfCol = catData["% Processor Performance"];
+                    _currPerfSamples.Clear();
+
+                    foreach (System.Diagnostics.InstanceData id in perfCol.Values)
+                    {
+                        string instName = id.InstanceName;
+                        _currPerfSamples[instName] = id.Sample;
+
+                        if (_prevPerfSamples.TryGetValue(instName, out var prevSample))
+                        {
+                            float p = System.Diagnostics.CounterSample.Calculate(prevSample, id.Sample);
+                            if (float.IsFinite(p) && p > 0f)
+                            {
+                                if (instName.Equals("_Total", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    totalPerf = p;
+                                }
+                                else
+                                {
+                                    int coreIdx = ParseLogicalCoreIndex(instName.AsSpan());
+                                    if (coreIdx >= 0)
+                                    {
+                                        coreClocks[coreIdx] = (float)Math.Round(baseMhz * (p / 100.0f), 0);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    (_prevPerfSamples, _currPerfSamples) = (_currPerfSamples, _prevPerfSamples);
+                }
+            }
+            catch { }
+        }
+
+        // Fallback to CallNtPowerInformation if first sample or counters unavailable
+        if (coreClocks.Count == 0)
+        {
+            try
+            {
+                int count = Environment.ProcessorCount;
+                var info = new PROCESSOR_POWER_INFORMATION[count];
+                int size = System.Runtime.InteropServices.Marshal.SizeOf<PROCESSOR_POWER_INFORMATION>() * count;
+                if (CallNtPowerInformation(ProcessorInformation, IntPtr.Zero, 0, info, size) == 0)
+                {
+                    float sumMhz = 0f;
+                    int valid = 0;
+                    for (int i = 0; i < count; i++)
+                    {
+                        uint mhz = info[i].CurrentMhz > 0 ? info[i].CurrentMhz : info[i].MaxMhz;
+                        if (mhz > 0)
+                        {
+                            coreClocks[i] = mhz;
+                            sumMhz += mhz;
+                            valid++;
+                        }
+                    }
+                    if (valid > 0 && totalPerf <= 0f)
+                    {
+                        return ((float)Math.Round(sumMhz / valid, 0), coreClocks);
+                    }
                 }
             }
             catch { }
@@ -290,36 +416,12 @@ public static class SystemHardwareHelper
 
         if (baseMhz <= 0)
         {
-            // Base frequency cannot be discovered via performance counter, registry, or NtPowerInformation
-            return (0f, new Dictionary<int, float>());
+            return (0f, coreClocks);
         }
 
-        float totalPerf = 100f;
-        if (_totalPerfCounter != null)
-        {
-            try
-            {
-                float v = _totalPerfCounter.NextValue();
-                if (v > 0) totalPerf = v;
-            }
-            catch { }
-        }
-
-        float totalDynMhz = (float)Math.Round(baseMhz * (totalPerf / 100.0f), 0);
-
-        var coreClocks = new Dictionary<int, float>();
-        foreach (var kvp in _corePerfCounters)
-        {
-            try
-            {
-                float p = kvp.Value.NextValue();
-                if (p > 0)
-                {
-                    coreClocks[kvp.Key] = (float)Math.Round(baseMhz * (p / 100.0f), 0);
-                }
-            }
-            catch { }
-        }
+        float totalDynMhz = totalPerf > 0f
+            ? (float)Math.Round(baseMhz * (totalPerf / 100.0f), 0)
+            : (coreClocks.Count > 0 ? (float)Math.Round(coreClocks.Values.Average(), 0) : baseMhz);
 
         return (totalDynMhz, coreClocks);
     }

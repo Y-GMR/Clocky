@@ -73,17 +73,26 @@ public partial class MainWindow : Window
     private string _processFilter = "";
     private string _activeProcessSortColumn = "";
     private ListSortDirection? _activeProcessSortDirection = null;
+    private readonly System.Collections.ObjectModel.ObservableCollection<ProcessItem> _processGridItems = new();
+    private readonly Dictionary<string, ProcessItem> _processGridMap = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _expandedProcessNames = new(StringComparer.OrdinalIgnoreCase);
+    private bool _isProcessesPaused = false;
+    private ProcessTelemetrySnapshot? _pausedProcessesSnapshot = null;
 
-    // CPU Visual Core Controls (24 Threads: 16 P-Core + 8 E-Core)
+    // CPU Visual Core Controls (Adaptive P-Core / E-Core / Uniform Thread Topology)
     private readonly List<Canvas> _pCoreCanvases = new();
     private readonly List<TextBlock> _pCoreClockLabels = new();
     private readonly List<TextBlock> _pCoreValueLabels = new();
     private readonly List<List<float>> _pCoreHistories = new();
+    private readonly List<int> _pCoreSnapshotIndices = new();
+    private readonly List<string> _pCoreHoverTitles = new();
 
     private readonly List<Canvas> _eCoreCanvases = new();
     private readonly List<TextBlock> _eCoreClockLabels = new();
     private readonly List<TextBlock> _eCoreValueLabels = new();
     private readonly List<List<float>> _eCoreHistories = new();
+    private readonly List<int> _eCoreSnapshotIndices = new();
+    private readonly List<string> _eCoreHoverTitles = new();
 
     // CPU 4 Core Metric Graphs Rolling History Buffers
     private readonly List<float> _cpuLoadHistory = new();
@@ -120,14 +129,14 @@ public partial class MainWindow : Window
     // =========================================================================
     // COLOR PALETTE CONSTANTS & HELPERS
     // =========================================================================
-    private static readonly MediaColor DiscordBlurple = MediaColor.FromRgb(114, 137, 218);      // #7289DA
-    private static readonly MediaColor DiscordBlurpleDark = MediaColor.FromRgb(91, 110, 174);    // #5B6EAE
-    private static readonly MediaColor DiscordDarkWindow = MediaColor.FromRgb(30, 33, 36);       // #1E2124
-    private static readonly MediaColor DiscordDarkPanel = MediaColor.FromRgb(40, 43, 48);        // #282B30
-    private static readonly MediaColor DiscordDarkCard = MediaColor.FromRgb(54, 57, 62);         // #36393E
-    private static readonly MediaColor DiscordDarkBorder = MediaColor.FromRgb(66, 69, 73);       // #424549
-    private static readonly MediaColor DiscordDarkSecondary = MediaColor.FromRgb(185, 187, 190); // #B9BBBE
-    private static readonly MediaColor DiscordDarkMuted = MediaColor.FromRgb(114, 118, 125);     // #72767D
+    private static readonly MediaColor AccentCobalt = MediaColor.FromRgb(114, 137, 218);      // #7289DA
+    private static readonly MediaColor AccentCobaltDark = MediaColor.FromRgb(91, 110, 174);   // #5B6EAE
+    private static readonly MediaColor DarkWindow = MediaColor.FromRgb(30, 33, 36);           // #1E2124
+    private static readonly MediaColor DarkPanel = MediaColor.FromRgb(40, 43, 48);            // #282B30
+    private static readonly MediaColor DarkCard = MediaColor.FromRgb(54, 57, 62);             // #36393E
+    private static readonly MediaColor DarkBorder = MediaColor.FromRgb(66, 69, 73);           // #424549
+    private static readonly MediaColor DarkSecondary = MediaColor.FromRgb(185, 187, 190);     // #B9BBBE
+    private static readonly MediaColor DarkMuted = MediaColor.FromRgb(114, 118, 125);         // #72767D
 
     private static readonly MediaColor LightWindow = MediaColor.FromRgb(240, 243, 246);          // #F0F3F6
     private static readonly MediaColor LightPanel = MediaColor.FromRgb(255, 255, 255);           // #FFFFFF
@@ -141,10 +150,10 @@ public partial class MainWindow : Window
     public static readonly MediaColor MetricGreen = MediaColor.FromRgb(34, 197, 94);   // #22C55E (Read, Upload)
     public static readonly MediaColor MetricRed = MediaColor.FromRgb(239, 68, 68);     // #EF4444 (Write, Download)
 
-    private MediaColor WaveformStroke => DiscordBlurple;
+    private MediaColor WaveformStroke => AccentCobalt;
     private MediaColor WaveformFill => _isDarkTheme ? MediaColor.FromArgb(35, 114, 137, 218) : MediaColor.FromArgb(35, 114, 137, 218);
     private MediaColor TextPrimaryColor => _isDarkTheme ? MediaColor.FromRgb(255, 255, 255) : LightPrimaryText;
-    private MediaColor TextSecondaryColor => _isDarkTheme ? DiscordDarkSecondary : LightSecondaryText;
+    private MediaColor TextSecondaryColor => _isDarkTheme ? DarkSecondary : LightSecondaryText;
 
     public MainWindow(HardwareEngine engine, AppConfig config, Action? onReloadTrayIcons = null)
     {
@@ -290,7 +299,7 @@ public partial class MainWindow : Window
 
             if (isDark)
             {
-                // DiscordDarkWindow is #1E2124 (R:30, G:33, B:36 -> 0x0024211E)
+                // DarkWindow is #1E2124 (R:30, G:33, B:36 -> 0x0024211E)
                 int darkCaptionColor = 0x0024211E;
                 DwmSetWindowAttribute(hwnd, DWMWA_CAPTION_COLOR, ref darkCaptionColor, sizeof(int));
                 int lightTextColor = 0x00FFFFFF;
@@ -335,6 +344,20 @@ public partial class MainWindow : Window
         return true;
     }
 
+    private static SolidColorBrush FrozenBrush(MediaColor c)
+    {
+        var b = new SolidColorBrush(c);
+        b.Freeze();
+        return b;
+    }
+
+    private static DropShadowEffect FrozenShadow(double blur, double depth, double dir, MediaColor color, double opacity)
+    {
+        var e = new DropShadowEffect { BlurRadius = blur, ShadowDepth = depth, Direction = dir, Color = color, Opacity = opacity };
+        e.Freeze();
+        return e;
+    }
+
     public void ApplyTheme(string themeMode)
     {
         _currentThemeMode = themeMode;
@@ -349,51 +372,51 @@ public partial class MainWindow : Window
 
         if (_isDarkTheme)
         {
-            // Discord Dark Palette
-            res["BrushWindowBg"] = new SolidColorBrush(DiscordDarkWindow);
-            res["BrushPanelBg"] = new SolidColorBrush(DiscordDarkPanel);
-            res["BrushCardBg"] = new SolidColorBrush(DiscordDarkCard);
-            res["BrushCardSunken"] = new SolidColorBrush(DiscordDarkPanel);
-            res["BrushCardBorder"] = new SolidColorBrush(DiscordDarkBorder);
-            res["BrushBorderHighlight"] = new SolidColorBrush(MediaColor.FromArgb(20, 255, 255, 255));
-            res["BrushTextPrimary"] = new SolidColorBrush(MediaColor.FromRgb(255, 255, 255));
-            res["BrushTextSecondary"] = new SolidColorBrush(DiscordDarkSecondary);
-            res["BrushTextMuted"] = new SolidColorBrush(DiscordDarkMuted);
-            res["BrushAccentCobalt"] = new SolidColorBrush(DiscordBlurple);
-            res["BrushAccentCobaltDark"] = new SolidColorBrush(DiscordBlurpleDark);
-            res["BrushAccentSlate"] = new SolidColorBrush(DiscordDarkSecondary);
-            res["BrushMetricGreen"] = new SolidColorBrush(MetricGreen);
-            res["BrushMetricRed"] = new SolidColorBrush(MetricRed);
-            res["BrushHeaderVital"] = new SolidColorBrush(MediaColor.FromRgb(255, 255, 255));
-            res["BrushGridLine"] = new SolidColorBrush(MediaColor.FromArgb(30, 255, 255, 255));
-            res["SkeuoCardShadow"] = new DropShadowEffect { BlurRadius = 14, ShadowDepth = 3, Direction = 315, Color = MediaColor.FromRgb(15, 17, 19), Opacity = 0.8 };
-            res["SkeuoButtonShadow"] = new DropShadowEffect { BlurRadius = 6, ShadowDepth = 2, Direction = 315, Color = MediaColor.FromRgb(15, 17, 19), Opacity = 0.65 };
-            res["SkeuoActiveShadow"] = new DropShadowEffect { BlurRadius = 10, ShadowDepth = 2, Direction = 315, Color = DiscordBlurple, Opacity = 0.4 };
-            res["SkeuoSunkenShadow"] = new DropShadowEffect { BlurRadius = 6, ShadowDepth = 2, Direction = 135, Color = MediaColor.FromRgb(15, 17, 19), Opacity = 0.5 };
+            // Dark Palette (Frozen for zero WPF notification overhead)
+            res["BrushWindowBg"] = FrozenBrush(DarkWindow);
+            res["BrushPanelBg"] = FrozenBrush(DarkPanel);
+            res["BrushCardBg"] = FrozenBrush(DarkCard);
+            res["BrushCardSunken"] = FrozenBrush(DarkPanel);
+            res["BrushCardBorder"] = FrozenBrush(DarkBorder);
+            res["BrushBorderHighlight"] = FrozenBrush(MediaColor.FromArgb(20, 255, 255, 255));
+            res["BrushTextPrimary"] = FrozenBrush(MediaColor.FromRgb(255, 255, 255));
+            res["BrushTextSecondary"] = FrozenBrush(DarkSecondary);
+            res["BrushTextMuted"] = FrozenBrush(DarkMuted);
+            res["BrushAccentCobalt"] = FrozenBrush(AccentCobalt);
+            res["BrushAccentCobaltDark"] = FrozenBrush(AccentCobaltDark);
+            res["BrushAccentSlate"] = FrozenBrush(DarkSecondary);
+            res["BrushMetricGreen"] = FrozenBrush(MetricGreen);
+            res["BrushMetricRed"] = FrozenBrush(MetricRed);
+            res["BrushHeaderVital"] = FrozenBrush(MediaColor.FromRgb(255, 255, 255));
+            res["BrushGridLine"] = FrozenBrush(MediaColor.FromArgb(30, 255, 255, 255));
+            res["SkeuoCardShadow"] = FrozenShadow(14, 3, 315, MediaColor.FromRgb(15, 17, 19), 0.8);
+            res["SkeuoButtonShadow"] = FrozenShadow(6, 2, 315, MediaColor.FromRgb(15, 17, 19), 0.65);
+            res["SkeuoActiveShadow"] = FrozenShadow(10, 2, 315, AccentCobalt, 0.4);
+            res["SkeuoSunkenShadow"] = FrozenShadow(6, 2, 135, MediaColor.FromRgb(15, 17, 19), 0.5);
         }
         else
         {
-            // Studio Light Palette with Discord Blue
-            res["BrushWindowBg"] = new SolidColorBrush(LightWindow);
-            res["BrushPanelBg"] = new SolidColorBrush(LightPanel);
-            res["BrushCardBg"] = new SolidColorBrush(LightCard);
-            res["BrushCardSunken"] = new SolidColorBrush(LightSunken);
-            res["BrushCardBorder"] = new SolidColorBrush(LightBorder);
-            res["BrushBorderHighlight"] = new SolidColorBrush(MediaColor.FromArgb(200, 255, 255, 255));
-            res["BrushTextPrimary"] = new SolidColorBrush(LightPrimaryText);
-            res["BrushTextSecondary"] = new SolidColorBrush(LightSecondaryText);
-            res["BrushTextMuted"] = new SolidColorBrush(LightMutedText);
-            res["BrushAccentCobalt"] = new SolidColorBrush(DiscordBlurple);
-            res["BrushAccentCobaltDark"] = new SolidColorBrush(DiscordBlurpleDark);
-            res["BrushAccentSlate"] = new SolidColorBrush(MediaColor.FromRgb(100, 116, 139));
-            res["BrushMetricGreen"] = new SolidColorBrush(MetricGreen);
-            res["BrushMetricRed"] = new SolidColorBrush(MetricRed);
-            res["BrushHeaderVital"] = new SolidColorBrush(LightPrimaryText);
-            res["BrushGridLine"] = new SolidColorBrush(MediaColor.FromArgb(50, 0, 0, 0));
-            res["SkeuoCardShadow"] = new DropShadowEffect { BlurRadius = 14, ShadowDepth = 3, Direction = 315, Color = MediaColor.FromArgb(30, 0, 0, 0), Opacity = 0.4 };
-            res["SkeuoButtonShadow"] = new DropShadowEffect { BlurRadius = 6, ShadowDepth = 2, Direction = 315, Color = MediaColor.FromArgb(20, 0, 0, 0), Opacity = 0.3 };
-            res["SkeuoActiveShadow"] = new DropShadowEffect { BlurRadius = 10, ShadowDepth = 2, Direction = 315, Color = DiscordBlurple, Opacity = 0.35 };
-            res["SkeuoSunkenShadow"] = new DropShadowEffect { BlurRadius = 4, ShadowDepth = 1.5, Direction = 135, Color = MediaColor.FromArgb(30, 0, 0, 0), Opacity = 0.25 };
+            // Studio Light Palette (Frozen for zero WPF notification overhead)
+            res["BrushWindowBg"] = FrozenBrush(LightWindow);
+            res["BrushPanelBg"] = FrozenBrush(LightPanel);
+            res["BrushCardBg"] = FrozenBrush(LightCard);
+            res["BrushCardSunken"] = FrozenBrush(LightSunken);
+            res["BrushCardBorder"] = FrozenBrush(LightBorder);
+            res["BrushBorderHighlight"] = FrozenBrush(MediaColor.FromArgb(200, 255, 255, 255));
+            res["BrushTextPrimary"] = FrozenBrush(LightPrimaryText);
+            res["BrushTextSecondary"] = FrozenBrush(LightSecondaryText);
+            res["BrushTextMuted"] = FrozenBrush(LightMutedText);
+            res["BrushAccentCobalt"] = FrozenBrush(AccentCobalt);
+            res["BrushAccentCobaltDark"] = FrozenBrush(AccentCobaltDark);
+            res["BrushAccentSlate"] = FrozenBrush(MediaColor.FromRgb(100, 116, 139));
+            res["BrushMetricGreen"] = FrozenBrush(MetricGreen);
+            res["BrushMetricRed"] = FrozenBrush(MetricRed);
+            res["BrushHeaderVital"] = FrozenBrush(LightPrimaryText);
+            res["BrushGridLine"] = FrozenBrush(MediaColor.FromArgb(50, 0, 0, 0));
+            res["SkeuoCardShadow"] = FrozenShadow(14, 3, 315, MediaColor.FromArgb(30, 0, 0, 0), 0.4);
+            res["SkeuoButtonShadow"] = FrozenShadow(6, 2, 315, MediaColor.FromArgb(20, 0, 0, 0), 0.3);
+            res["SkeuoActiveShadow"] = FrozenShadow(10, 2, 315, AccentCobalt, 0.35);
+            res["SkeuoSunkenShadow"] = FrozenShadow(4, 1.5, 135, MediaColor.FromArgb(30, 0, 0, 0), 0.25);
         }
 
         UpdateTitleBarTheme(_isDarkTheme);
@@ -475,8 +498,9 @@ public partial class MainWindow : Window
     {
         if (GridPCores == null || GridECores == null) return;
 
+        var topo = CpuTopologyHelper.GetTopology();
         string cpuName = snap?.CpuName ?? "";
-        int threadCount = snap?.CpuCores?.Count > 0 ? snap.CpuCores.Count : Environment.ProcessorCount;
+        int threadCount = snap?.CpuCores?.Count > 0 ? snap.CpuCores.Count : topo.LogicalProcessorCount;
 
         if (_lastConfiguredThreadCount == threadCount && _lastConfiguredCpuName == cpuName && _pCoreCanvases.Count > 0)
             return;
@@ -484,10 +508,10 @@ public partial class MainWindow : Window
         _lastConfiguredCpuName = cpuName;
         _lastConfiguredThreadCount = threadCount;
 
-        bool isHeterogeneous = snap?.CpuCores?.Any(c => c.CoreType == "E-Core") == true;
+        bool isHeterogeneous = snap?.CpuCores?.Any(c => c.CoreType == "E-Core") == true || topo.IsHeterogeneous;
 
-        MediaColor cellBg = _isDarkTheme ? DiscordDarkPanel : LightSunken;
-        MediaColor cellBorder = _isDarkTheme ? DiscordDarkBorder : LightBorder;
+        MediaColor cellBg = _isDarkTheme ? DarkPanel : LightSunken;
+        MediaColor cellBorder = _isDarkTheme ? DarkBorder : LightBorder;
         MediaColor titleColor = TextSecondaryColor;
         MediaColor clockColor = TextPrimaryColor;
 
@@ -496,22 +520,47 @@ public partial class MainWindow : Window
         _pCoreClockLabels.Clear();
         _pCoreValueLabels.Clear();
         _pCoreHistories.Clear();
+        _pCoreSnapshotIndices.Clear();
+        _pCoreHoverTitles.Clear();
 
         GridECores.Children.Clear();
         _eCoreCanvases.Clear();
         _eCoreClockLabels.Clear();
         _eCoreValueLabels.Clear();
         _eCoreHistories.Clear();
+        _eCoreSnapshotIndices.Clear();
+        _eCoreHoverTitles.Clear();
 
         if (isHeterogeneous)
         {
-            // Heterogeneous CPU: Separate P-Core and E-Core sections
-            int pThreadCount = snap?.CpuCores?.Count(c => c.CoreType == "P-Core") ?? 0;
-            int eCoreCount = snap?.CpuCores?.Count(c => c.CoreType == "E-Core") ?? 0;
+            // Heterogeneous CPU: Separate P-Core and E-Core sections using true OS topology
+            int pCorePhysicalCount = topo.PCoreCount > 0 ? topo.PCoreCount : 1;
+            int eCorePhysicalCount = topo.ECoreCount;
+
+            if (snap?.CpuCores != null && snap.CpuCores.Count > 0)
+            {
+                for (int idx = 0; idx < snap.CpuCores.Count; idx++)
+                {
+                    var c = snap.CpuCores[idx];
+                    if (c.CoreType == "E-Core")
+                        _eCoreSnapshotIndices.Add(idx);
+                    else
+                        _pCoreSnapshotIndices.Add(idx);
+                }
+            }
+            else
+            {
+                int pThreads = topo.PCores.Sum(c => Math.Max(1, c.LogicalProcessorIndices.Count));
+                for (int i = 0; i < pThreads; i++) _pCoreSnapshotIndices.Add(i);
+                for (int i = 0; i < eCorePhysicalCount; i++) _eCoreSnapshotIndices.Add(pThreads + i);
+            }
+
+            int pThreadCount = _pCoreSnapshotIndices.Count;
+            int eCoreCount = _eCoreSnapshotIndices.Count;
 
             if (HdrPCores != null)
             {
-                HdrPCores.Text = $"PERFORMANCE CORES ({pThreadCount / 2}P / {pThreadCount}T)";
+                HdrPCores.Text = $"PERFORMANCE CORES ({pCorePhysicalCount}P / {pThreadCount}T)";
                 HdrPCores.Visibility = Visibility.Visible;
             }
             if (HdrECores != null)
@@ -523,55 +572,75 @@ public partial class MainWindow : Window
             GridPCores.Visibility = Visibility.Visible;
             GridECores.Visibility = eCoreCount > 0 ? Visibility.Visible : Visibility.Collapsed;
 
-            int pCols = 8;
+            int pCols = Math.Clamp(pThreadCount, 1, 8);
             int pRows = (int)Math.Ceiling((double)pThreadCount / pCols);
             GridPCores.Columns = pCols;
             GridPCores.Rows = pRows;
 
             for (int i = 0; i < pThreadCount; i++)
             {
-                int coreNum = (i / 2) + 1;
-                int smtNum = (i % 2) + 1;
+                int snapIdx = _pCoreSnapshotIndices[i];
+                var cInfo = (snap?.CpuCores != null && snapIdx < snap.CpuCores.Count) ? snap.CpuCores[snapIdx] : null;
+                int coreNum = cInfo?.CoreNumber > 0 ? cInfo.CoreNumber : (i + 1);
+                int smtNum = cInfo?.SmtThreadNumber > 0 ? cInfo.SmtThreadNumber : 1;
+                bool isSmt = cInfo?.IsSmt ?? (pThreadCount > pCorePhysicalCount);
+
+                string cellLabel = isSmt ? $"P{coreNum}.T{smtNum}" : $"P{coreNum}";
+                string hoverTitle = isSmt ? $"P-CORE {coreNum} (THREAD {smtNum})" : $"P-CORE {coreNum}";
+                _pCoreHoverTitles.Add(hoverTitle);
+
                 AddCoreCell(GridPCores, _pCoreCanvases, _pCoreClockLabels, _pCoreValueLabels, _pCoreHistories, 
-                    $"P{coreNum}.T{smtNum}", cellBg, cellBorder, titleColor, clockColor);
+                    cellLabel, cellBg, cellBorder, titleColor, clockColor);
             }
 
             if (eCoreCount > 0)
             {
-                int eCols = 8;
+                int eCols = Math.Clamp(eCoreCount, 1, 8);
                 int eRows = (int)Math.Ceiling((double)eCoreCount / eCols);
                 GridECores.Columns = eCols;
                 GridECores.Rows = eRows;
 
                 for (int i = 0; i < eCoreCount; i++)
                 {
+                    int snapIdx = _eCoreSnapshotIndices[i];
+                    var cInfo = (snap?.CpuCores != null && snapIdx < snap.CpuCores.Count) ? snap.CpuCores[snapIdx] : null;
+                    int eNum = cInfo?.CoreNumber > 0 ? cInfo.CoreNumber : (i + 1);
+                    _eCoreHoverTitles.Add($"E-CORE {eNum}");
+
                     AddCoreCell(GridECores, _eCoreCanvases, _eCoreClockLabels, _eCoreValueLabels, _eCoreHistories, 
-                        $"E{i + 1}", cellBg, cellBorder, titleColor, clockColor);
+                        $"E{eNum}", cellBg, cellBorder, titleColor, clockColor);
                 }
             }
         }
         else
         {
-            // AMD Ryzen / Uniform Intel CPUs: Single Adaptive Grid
+            // AMD Ryzen / Uniform Intel / Snapdragon CPUs: Single Adaptive Grid
+            int physCount = topo.PhysicalCoreCount > 0 ? topo.PhysicalCoreCount : threadCount;
             if (HdrPCores != null)
             {
-                HdrPCores.Text = $"CPU CORES & THREADS ({threadCount} Threads)";
+                HdrPCores.Text = $"CPU CORES & THREADS ({physCount}C / {threadCount}T)";
                 HdrPCores.Visibility = Visibility.Visible;
             }
             if (HdrECores != null) HdrECores.Visibility = Visibility.Collapsed;
             GridECores.Visibility = Visibility.Collapsed;
 
-            int cols = threadCount <= 8 ? threadCount : (threadCount <= 16 ? 8 : 8);
-            if (cols <= 0) cols = 4;
+            int cols = threadCount <= 8 ? Math.Max(1, threadCount) : 8;
             int rows = (int)Math.Ceiling((double)threadCount / cols);
             GridPCores.Columns = cols;
             GridPCores.Rows = rows;
 
             for (int i = 0; i < threadCount; i++)
             {
-                int coreNum = (i / 2) + 1;
-                int smtNum = (i % 2) + 1;
-                string label = (threadCount > 8) ? $"C{coreNum}.T{smtNum}" : $"T{i + 1}";
+                _pCoreSnapshotIndices.Add(i);
+                var cInfo = (snap?.CpuCores != null && i < snap.CpuCores.Count) ? snap.CpuCores[i] : null;
+                int coreNum = cInfo?.CoreNumber > 0 ? cInfo.CoreNumber : (i + 1);
+                int smtNum = cInfo?.SmtThreadNumber > 0 ? cInfo.SmtThreadNumber : 1;
+                bool isSmt = cInfo?.IsSmt ?? (threadCount > physCount);
+
+                string label = isSmt ? $"C{coreNum}.T{smtNum}" : $"C{coreNum}";
+                string hoverTitle = isSmt ? $"CPU CORE {coreNum} (THREAD {smtNum})" : $"CPU CORE {coreNum}";
+                _pCoreHoverTitles.Add(hoverTitle);
+
                 AddCoreCell(GridPCores, _pCoreCanvases, _pCoreClockLabels, _pCoreValueLabels, _pCoreHistories, 
                     label, cellBg, cellBorder, titleColor, clockColor);
             }
@@ -586,8 +655,8 @@ public partial class MainWindow : Window
     {
         var cell = new Border
         {
-            Background = new SolidColorBrush(cellBg),
-            BorderBrush = new SolidColorBrush(cellBorder),
+            Background = GraphHoverOverlay.GetBrush(cellBg),
+            BorderBrush = GraphHoverOverlay.GetBrush(cellBorder),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(5),
             Margin = new Thickness(2),
@@ -600,8 +669,8 @@ public partial class MainWindow : Window
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
         var dockTop = new DockPanel();
-        var titleLbl = new TextBlock { Text = label, FontSize = 9, FontWeight = FontWeights.Bold, Foreground = new SolidColorBrush(titleColor) };
-        var clockLbl = new TextBlock { Text = "0.0 GHz", FontSize = 9, FontFamily = new MediaFontFamily("Consolas"), FontWeight = FontWeights.Bold, Foreground = new SolidColorBrush(clockColor), HorizontalAlignment = WpfHorizontalAlignment.Right };
+        var titleLbl = new TextBlock { Text = label, FontSize = 9, FontWeight = FontWeights.Bold, Foreground = GraphHoverOverlay.GetBrush(titleColor) };
+        var clockLbl = new TextBlock { Text = "0.0 GHz", FontSize = 9, FontFamily = new MediaFontFamily("Consolas"), FontWeight = FontWeights.Bold, Foreground = GraphHoverOverlay.GetBrush(clockColor), HorizontalAlignment = WpfHorizontalAlignment.Right };
         DockPanel.SetDock(titleLbl, Dock.Left);
         DockPanel.SetDock(clockLbl, Dock.Right);
         dockTop.Children.Add(titleLbl);
@@ -613,7 +682,7 @@ public partial class MainWindow : Window
         Grid.SetRow(sparkCanvas, 1);
         grid.Children.Add(sparkCanvas);
 
-        var valueLbl = new TextBlock { Text = "0% ±0%", FontSize = 8.5, FontFamily = new MediaFontFamily("Consolas"), Foreground = new SolidColorBrush(titleColor) };
+        var valueLbl = new TextBlock { Text = "0% ±0%", FontSize = 8.5, FontFamily = new MediaFontFamily("Consolas"), Foreground = GraphHoverOverlay.GetBrush(titleColor) };
         Grid.SetRow(valueLbl, 2);
         grid.Children.Add(valueLbl);
 
@@ -730,12 +799,12 @@ public partial class MainWindow : Window
         {
             Hairline.Stroke = GetBrush(isDarkTheme ? MediaColor.FromArgb(140, 114, 137, 218) : MediaColor.FromArgb(160, 114, 137, 218));
             DotOuter.Fill = GetBrush(MediaColor.FromArgb(80, 114, 137, 218));
-            DotOuter.Stroke = GetBrush(DiscordBlurple);
-            DotInner.Fill = GetBrush(isDarkTheme ? MediaColor.FromRgb(255, 255, 255) : DiscordBlurple);
-            DotInner.Stroke = GetBrush(isDarkTheme ? DiscordBlurple : MediaColor.FromRgb(255, 255, 255));
+            DotOuter.Stroke = GetBrush(AccentCobalt);
+            DotInner.Fill = GetBrush(isDarkTheme ? MediaColor.FromRgb(255, 255, 255) : AccentCobalt);
+            DotInner.Stroke = GetBrush(isDarkTheme ? AccentCobalt : MediaColor.FromRgb(255, 255, 255));
 
-            Tooltip.Background = GetBrush(isDarkTheme ? DiscordDarkPanel : LightPanel);
-            Tooltip.BorderBrush = GetBrush(isDarkTheme ? DiscordDarkBorder : LightBorder);
+            Tooltip.Background = GetBrush(isDarkTheme ? DarkPanel : LightPanel);
+            Tooltip.BorderBrush = GetBrush(isDarkTheme ? DarkBorder : LightBorder);
             TooltipTitle.Foreground = GetBrush(isDarkTheme ? MediaColor.FromRgb(255, 255, 255) : LightPrimaryText);
         }
 
@@ -860,21 +929,20 @@ public partial class MainWindow : Window
             float frac = floatIdx - (float)Math.Floor(floatIdx);
 
             float val = history[idx0] * (1f - frac) + history[idx1] * frac;
-            float actualMax = fixedMax;
-            if (actualMax <= 0f)
+            if (overlay.CachedMaxSampleCount != history.Count)
             {
-                if (overlay.CachedMaxSampleCount != history.Count)
+                float m = 1f;
+                for (int i = 0; i < history.Count; i++)
                 {
-                    float m = 1f;
-                    for (int i = 0; i < history.Count; i++)
-                    {
-                        if (history[i] > m) m = history[i];
-                    }
-                    overlay.CachedMax = m;
-                    overlay.CachedMaxSampleCount = history.Count;
+                    if (history[i] > m) m = history[i];
                 }
-                actualMax = overlay.CachedMax;
+                overlay.CachedMax = m;
+                overlay.CachedMaxSampleCount = history.Count;
             }
+            float baseMax = ReferenceEquals(canvas, CanvasGpuVram) && _latestSnapshot?.GpuVramTotalGb > 0
+                ? _latestSnapshot.GpuVramTotalGb
+                : fixedMax;
+            float actualMax = Math.Max(baseMax > 0f ? baseMax : 1f, overlay.CachedMax);
 
             double ptX = pos.X;
             double ptY = h - (Math.Clamp(val, 0f, actualMax) / actualMax * h);
@@ -1107,22 +1175,24 @@ public partial class MainWindow : Window
 
     private void AttachCpuCoreHovers()
     {
-        MediaColor blue = DiscordBlurple;
+        MediaColor blue = AccentCobalt;
         for (int i = 0; i < _pCoreCanvases.Count; i++)
         {
             int threadIdx = i;
-            int coreNum = (threadIdx / 2) + 1;
-            int smtNum = (threadIdx % 2) + 1;
-            string threadTitle = $"P-CORE {coreNum} (THREAD {smtNum})";
+            string threadTitle = (threadIdx < _pCoreHoverTitles.Count)
+                ? _pCoreHoverTitles[threadIdx]
+                : $"CPU CORE {threadIdx + 1}";
             var canvas = _pCoreCanvases[threadIdx];
             var hist = _pCoreHistories[threadIdx];
-            SetupMetricGraphHover(canvas, hist, threadTitle, "Thread Load:", "%", blue, fixedMax: 100f);
+            SetupMetricGraphHover(canvas, hist, threadTitle, "Load:", "%", blue, fixedMax: 100f);
         }
 
         for (int i = 0; i < _eCoreCanvases.Count; i++)
         {
             int eCoreIdx = i;
-            string threadTitle = $"E-CORE {eCoreIdx + 1}";
+            string threadTitle = (eCoreIdx < _eCoreHoverTitles.Count)
+                ? _eCoreHoverTitles[eCoreIdx]
+                : $"E-CORE {eCoreIdx + 1}";
             var canvas = _eCoreCanvases[eCoreIdx];
             var hist = _eCoreHistories[eCoreIdx];
             SetupMetricGraphHover(canvas, hist, threadTitle, "Core Load:", "%", blue, fixedMax: 100f);
@@ -1131,15 +1201,15 @@ public partial class MainWindow : Window
 
     private void SetupGraphHoverInteractivity()
     {
-        MediaColor blue = DiscordBlurple;
+        MediaColor blue = AccentCobalt;
 
         // 1. CPU Tab Main Metric Graphs
         if (CanvasCpuLoad != null) SetupMetricGraphHover(CanvasCpuLoad, _cpuLoadHistory, "CPU TOTAL LOAD", "Load:", "%", blue, fixedMax: 100f);
         if (CanvasCpuTemp != null) SetupMetricGraphHover(CanvasCpuTemp, _cpuTempHistory, "CPU TEMPERATURE", "Temperature:", "°C", blue, fixedMax: 100f);
-        if (CanvasCpuPower != null) SetupMetricGraphHover(CanvasCpuPower, _cpuPowerHistory, "CPU RAPL PACKAGE POWER", "Power Draw:", "W", blue, fixedMax: 120f);
+        if (CanvasCpuPower != null) SetupMetricGraphHover(CanvasCpuPower, _cpuPowerHistory, "CPU PACKAGE POWER", "Power Draw:", "W", blue, fixedMax: 120f);
         if (CanvasCpuFreq != null) SetupMetricGraphHover(CanvasCpuFreq, _cpuFreqHistory, "CPU CLOCK FREQUENCY", "Frequency:", "MHz", blue, val => $"{val:F0} MHz ({(val/1000f):F2} GHz)", fixedMax: 5000f);
 
-        // 2. CPU Individual Core Threads Hover (16 P-Cores + 8 E-Cores)
+        // 2. CPU Individual Core Threads Hover
         AttachCpuCoreHovers();
 
         // 3. GPU Tab Graphs
@@ -1149,8 +1219,8 @@ public partial class MainWindow : Window
         if (CanvasGpuVram != null) SetupMetricGraphHover(CanvasGpuVram, _gpuVramHistory, "GPU VRAM ALLOCATION", "VRAM in Use:", "GB", blue, val => $"{val:F1} GB", fixedMax: 8f);
         if (CanvasGpu3d != null) SetupMetricGraphHover(CanvasGpu3d, _gpu3dHistory, "3D GRAPHICS ENGINE", "3D Load:", "%", blue, fixedMax: 100f);
         if (CanvasGpuCompute != null) SetupMetricGraphHover(CanvasGpuCompute, _gpuComputeHistory, "COMPUTE / GPGPU", "Compute:", "%", blue, fixedMax: 100f);
-        if (CanvasGpuDecoder != null) SetupMetricGraphHover(CanvasGpuDecoder, _gpuDecoderHistory, "VIDEO DECODE (NVDEC)", "Decode:", "%", blue, fixedMax: 100f);
-        if (CanvasGpuEncoder != null) SetupMetricGraphHover(CanvasGpuEncoder, _gpuEncoderHistory, "VIDEO ENCODE (NVENC)", "Encode:", "%", blue, fixedMax: 100f);
+        if (CanvasGpuDecoder != null) SetupMetricGraphHover(CanvasGpuDecoder, _gpuDecoderHistory, "VIDEO DECODE ENGINE", "Decode:", "%", blue, fixedMax: 100f);
+        if (CanvasGpuEncoder != null) SetupMetricGraphHover(CanvasGpuEncoder, _gpuEncoderHistory, "VIDEO ENCODE ENGINE", "Encode:", "%", blue, fixedMax: 100f);
         if (CanvasGpuCopy != null) SetupMetricGraphHover(CanvasGpuCopy, _gpuCopyHistory, "DMA / MEMORY COPY", "DMA Load:", "%", blue, fixedMax: 100f);
         if (CanvasGpuMemCtrl != null) SetupMetricGraphHover(CanvasGpuMemCtrl, _gpuMemCtrlHistory, "PCIE BUS INTERFACE", "Bus Load:", "%", blue, fixedMax: 100f);
 
@@ -1289,6 +1359,10 @@ public partial class MainWindow : Window
         {
             _engine.TrackDetailedProcesses = (index == 6);
             _engine.TrackDetailedNetwork = (index == 5);
+            if (index == 6 && _latestSnapshot != null && _latestSnapshot.Processes.AllProcesses.Count == 0)
+            {
+                _engine.RefreshDetailedProcessesNow(_latestSnapshot);
+            }
         }
 
         TabAllSensors.IsChecked = index == 0;
@@ -1338,6 +1412,7 @@ public partial class MainWindow : Window
     public void RecordHistorySamples(TelemetrySnapshot snap)
     {
         _latestSnapshot = snap;
+        EnsureCpuVisualGridConfigured(snap);
 
         PushHistory(_cpuLoadHistory, snap.CpuTotalUtil);
         PushHistory(_cpuTempHistory, snap.CpuPackageTemp);
@@ -1346,14 +1421,15 @@ public partial class MainWindow : Window
 
         for (int i = 0; i < _pCoreHistories.Count; i++)
         {
-            float tLoad = (i < snap.CpuCores.Count) ? snap.CpuCores[i].Load : 0f;
+            int snapIdx = (i < _pCoreSnapshotIndices.Count) ? _pCoreSnapshotIndices[i] : i;
+            float tLoad = (snapIdx >= 0 && snapIdx < snap.CpuCores.Count) ? snap.CpuCores[snapIdx].Load : 0f;
             PushHistory(_pCoreHistories[i], tLoad);
         }
 
         for (int i = 0; i < _eCoreHistories.Count; i++)
         {
-            int eIdx = _pCoreHistories.Count + i;
-            float eLoad = (eIdx < snap.CpuCores.Count) ? snap.CpuCores[eIdx].Load : 0f;
+            int snapIdx = (i < _eCoreSnapshotIndices.Count) ? _eCoreSnapshotIndices[i] : (_pCoreHistories.Count + i);
+            float eLoad = (snapIdx >= 0 && snapIdx < snap.CpuCores.Count) ? snap.CpuCores[snapIdx].Load : 0f;
             PushHistory(_eCoreHistories[i], eLoad);
         }
 
@@ -1443,8 +1519,17 @@ public partial class MainWindow : Window
             }
             if (CpuPkgPowerText != null) CpuPkgPowerText.Text = snap.CpuPackagePower > 0 ? $"{snap.CpuPackagePower:F1} W" : "— W";
 
-            var coresWithClock = snap.CpuCores.Where(c => c.Clock > 0).ToList();
-            float curAvgClock = coresWithClock.Count > 0 ? coresWithClock.Average(c => c.Clock) : snap.CpuMaxFrequency;
+            float clockSum = 0f;
+            int clockCount = 0;
+            for (int cIdx = 0; cIdx < snap.CpuCores.Count; cIdx++)
+            {
+                if (snap.CpuCores[cIdx].Clock > 0)
+                {
+                    clockSum += snap.CpuCores[cIdx].Clock;
+                    clockCount++;
+                }
+            }
+            float curAvgClock = clockCount > 0 ? (clockSum / clockCount) : snap.CpuMaxFrequency;
             if (CpuMaxFreqText != null) CpuMaxFreqText.Text = $"{curAvgClock:F0} / {snap.CpuMaxFrequency:F0} MHz";
             if (CpuTotalLoadText != null) CpuTotalLoadText.Text = $"{snap.CpuTotalUtil:F1} %";
             if (CpuVidText != null)
@@ -1466,31 +1551,38 @@ public partial class MainWindow : Window
 
             for (int i = 0; i < _pCoreCanvases.Count; i++)
             {
-                if (i < snap.CpuCores.Count && snap.CpuCores[i].Clock > 0)
-                    _pCoreClockLabels[i].Text = $"{(snap.CpuCores[i].Clock / 1000f):F1} GHz";
+                int snapIdx = (i < _pCoreSnapshotIndices.Count) ? _pCoreSnapshotIndices[i] : i;
+                if (snapIdx >= 0 && snapIdx < snap.CpuCores.Count && snap.CpuCores[snapIdx].Clock > 0)
+                    _pCoreClockLabels[i].Text = $"{(snap.CpuCores[snapIdx].Clock / 1000f):F1} GHz";
                 else
                     _pCoreClockLabels[i].Text = "— GHz";
 
-                float curLoad = _pCoreHistories[i].Count > 0 ? _pCoreHistories[i].Last() : 0f;
-                float avgLoad = _pCoreHistories[i].Count > 0 ? _pCoreHistories[i].Average() : 0f;
+                var hist = _pCoreHistories[i];
+                float curLoad = hist.Count > 0 ? hist[hist.Count - 1] : 0f;
+                float sumLoad = 0f;
+                for (int hIdx = 0; hIdx < hist.Count; hIdx++) sumLoad += hist[hIdx];
+                float avgLoad = hist.Count > 0 ? sumLoad / hist.Count : 0f;
                 UpdateLabelWithAvg(_pCoreValueLabels[i], curLoad, avgLoad, TextPrimaryColor);
 
-                DrawSparkWaveform(_pCoreCanvases[i], _pCoreHistories[i], 100f, WaveformStroke, WaveformFill);
+                DrawSparkWaveform(_pCoreCanvases[i], hist, 100f, WaveformStroke, WaveformFill);
             }
 
             for (int i = 0; i < _eCoreCanvases.Count; i++)
             {
-                int eThreadIdx = _pCoreCanvases.Count + i;
-                if (eThreadIdx < snap.CpuCores.Count && snap.CpuCores[eThreadIdx].Clock > 0)
-                    _eCoreClockLabels[i].Text = $"{(snap.CpuCores[eThreadIdx].Clock / 1000f):F1} GHz";
+                int snapIdx = (i < _eCoreSnapshotIndices.Count) ? _eCoreSnapshotIndices[i] : (_pCoreCanvases.Count + i);
+                if (snapIdx >= 0 && snapIdx < snap.CpuCores.Count && snap.CpuCores[snapIdx].Clock > 0)
+                    _eCoreClockLabels[i].Text = $"{(snap.CpuCores[snapIdx].Clock / 1000f):F1} GHz";
                 else
                     _eCoreClockLabels[i].Text = "— GHz";
 
-                float curLoad = _eCoreHistories[i].Count > 0 ? _eCoreHistories[i].Last() : 0f;
-                float avgLoad = _eCoreHistories[i].Count > 0 ? _eCoreHistories[i].Average() : 0f;
+                var hist = _eCoreHistories[i];
+                float curLoad = hist.Count > 0 ? hist[hist.Count - 1] : 0f;
+                float sumLoad = 0f;
+                for (int hIdx = 0; hIdx < hist.Count; hIdx++) sumLoad += hist[hIdx];
+                float avgLoad = hist.Count > 0 ? sumLoad / hist.Count : 0f;
                 UpdateLabelWithAvg(_eCoreValueLabels[i], curLoad, avgLoad, TextPrimaryColor);
 
-                DrawSparkWaveform(_eCoreCanvases[i], _eCoreHistories[i], 100f, WaveformStroke, WaveformFill);
+                DrawSparkWaveform(_eCoreCanvases[i], hist, 100f, WaveformStroke, WaveformFill);
             }
         }
 
@@ -1536,7 +1628,11 @@ public partial class MainWindow : Window
             if (TxtGpuPcieRx != null) TxtGpuPcieRx.Text = $"{snap.GpuPcieRxMbps:F1} MB/s";
             if (TxtGpuPcieTx != null) TxtGpuPcieTx.Text = $"{snap.GpuPcieTxMbps:F1} MB/s";
             if (TxtGpuVramDetail != null) TxtGpuVramDetail.Text = $"{snap.GpuVramUsedGb:F1} / {snap.GpuVramTotalGb:F1} GB";
-            if (TxtGpuSharedVram != null) TxtGpuSharedVram.Text = $"{snap.GpuSharedVramGb:F1} / 16.0 GB";
+            if (TxtGpuSharedVram != null)
+            {
+                float sharedMaxGb = snap.RamTotalGb > 0 ? snap.RamTotalGb / 2f : 16f;
+                TxtGpuSharedVram.Text = $"{snap.GpuSharedVramGb:F1} / {sharedMaxGb:F1} GB";
+            }
         }
 
         // Tab 4: Memory & Storage
@@ -1546,7 +1642,11 @@ public partial class MainWindow : Window
             if (BarRamAlloc != null) BarRamAlloc.Value = Math.Clamp(snap.RamUsagePercent, 0, 100);
             if (TxtRamUsedDetail != null) TxtRamUsedDetail.Text = $"In Use: {snap.RamUsedGb:F1} GB";
             if (TxtRamAvailDetail != null) TxtRamAvailDetail.Text = $"Available: {snap.RamAvailableGb:F1} GB";
-            if (TxtRamSpeedDetail != null) TxtRamSpeedDetail.Text = $"Speed: {snap.RamSpeedMt} MT/s";
+            if (TxtRamSpeedDetail != null)
+            {
+                string typeStr = !string.IsNullOrEmpty(snap.RamTypeStr) && snap.RamTypeStr != "RAM" ? $" ({snap.RamTypeStr})" : "";
+                TxtRamSpeedDetail.Text = snap.RamSpeedMt > 0 ? $"Speed: {snap.RamSpeedMt} MT/s{typeStr}" : $"Type: {snap.RamTypeStr}";
+            }
             if (TxtRamTotalDetail != null) TxtRamTotalDetail.Text = $"Total: {snap.RamTotalGb:F1} GB";
 
             if (TxtRamGraphVitals != null) TxtRamGraphVitals.Text = $"In Use: {snap.RamUsedGb:F1} GB ({snap.RamUsagePercent:F1}%)";
@@ -1571,6 +1671,18 @@ public partial class MainWindow : Window
             if (TxtPowerPsys != null) TxtPowerPsys.Text = $"{snap.TotalSystemPowerWatts:F1} W";
             if (TxtPowerCpu != null) TxtPowerCpu.Text = $"{snap.CpuPackagePower:F1} W";
             if (TxtPowerGpu != null) TxtPowerGpu.Text = $"{snap.GpuPowerDraw:F1} W";
+
+            if (TxtPowerCpuSub != null)
+            {
+                bool isAmdCpu = snap.CpuName.Contains("AMD", StringComparison.OrdinalIgnoreCase) || snap.CpuName.Contains("Ryzen", StringComparison.OrdinalIgnoreCase);
+                TxtPowerCpuSub.Text = isAmdCpu ? "AMD SMU Package Power" : (snap.CpuName.Contains("Intel", StringComparison.OrdinalIgnoreCase) ? "Intel RAPL Package Power" : "CPU Package Telemetry");
+            }
+            if (TxtPowerGpuSub != null)
+            {
+                bool isNvidia = snap.GpuName.Contains("NVIDIA", StringComparison.OrdinalIgnoreCase) || snap.GpuName.Contains("GeForce", StringComparison.OrdinalIgnoreCase) || snap.GpuName.Contains("RTX", StringComparison.OrdinalIgnoreCase) || snap.GpuName.Contains("GTX", StringComparison.OrdinalIgnoreCase);
+                bool isAmdGpu = snap.GpuName.Contains("AMD", StringComparison.OrdinalIgnoreCase) || snap.GpuName.Contains("Radeon", StringComparison.OrdinalIgnoreCase);
+                TxtPowerGpuSub.Text = isNvidia ? "NVIDIA NVML Board Power" : (isAmdGpu ? "AMD GPU Power Telemetry" : "GPU Power Telemetry");
+            }
 
             if (TxtPowerGraphVitals != null) TxtPowerGraphVitals.Text = $"Current: {snap.TotalSystemPowerWatts:F1} W • Peak: {(_powerHistory.Count > 0 ? _powerHistory.Max() : 0):F1} W";
             DrawSparkWaveform(CanvasPowerGraph, _powerHistory, 150f, WaveformStroke, WaveformFill);
@@ -1641,8 +1753,11 @@ public partial class MainWindow : Window
         // Tab 7: Processes & Top Apps
         if (ViewProcesses != null && ViewProcesses.Visibility == Visibility.Visible && snap.Processes != null)
         {
-            RenderProcessTopCards(snap.Processes);
-            ApplyProcessSortingAndFilter(snap.Processes.AllProcesses);
+            if (!_isProcessesPaused)
+            {
+                RenderProcessTopCards(snap.Processes);
+                ApplyProcessSortingAndFilter(snap.Processes.AllProcesses);
+            }
 
             if (BrdGpuEngineStatus != null && TxtGpuEngineStatus != null)
             {
@@ -1668,19 +1783,28 @@ public partial class MainWindow : Window
     private static void UpdateLabelWithAvg(TextBlock lbl, float cur, float avg, MediaColor curColor)
     {
         if (lbl == null) return;
+        string curText = $"{cur:F0}%";
+        string avgText = $" a:{avg:F0}%";
+        if (lbl.Inlines.Count == 2 &&
+            lbl.Inlines.FirstInline is System.Windows.Documents.Run r1 &&
+            lbl.Inlines.LastInline is System.Windows.Documents.Run r2)
+        {
+            r1.Text = curText;
+            r1.Foreground = GraphHoverOverlay.GetBrush(curColor);
+            r2.Text = avgText;
+            return;
+        }
         lbl.Inlines.Clear();
-        var curRun = new System.Windows.Documents.Run($"{cur:F0}%")
+        lbl.Inlines.Add(new System.Windows.Documents.Run(curText)
         {
-            Foreground = new SolidColorBrush(curColor),
+            Foreground = GraphHoverOverlay.GetBrush(curColor),
             FontWeight = FontWeights.Bold
-        };
-        var avgRun = new System.Windows.Documents.Run($" a:{avg:F0}%")
+        });
+        lbl.Inlines.Add(new System.Windows.Documents.Run(avgText)
         {
-            Foreground = new SolidColorBrush(MediaColor.FromArgb(140, 148, 163, 184)),
+            Foreground = GraphHoverOverlay.GetBrush(MediaColor.FromArgb(140, 148, 163, 184)),
             FontSize = 8
-        };
-        lbl.Inlines.Add(curRun);
-        lbl.Inlines.Add(avgRun);
+        });
     }
 
     private static void PushHistory(List<float> buffer, float val, int maxPoints = MaxHistoryPoints)
@@ -1692,13 +1816,23 @@ public partial class MainWindow : Window
     // =========================================================================
     // OSCILLOSCOPE & STUDIO METRIC GRID ENGINE
     // =========================================================================
+    private static readonly DoubleCollection s_dashCenter = CreateFrozenDashes(4, 3);
+    private static readonly DoubleCollection s_dashGrid = CreateFrozenDashes(2, 4);
+
+    private static DoubleCollection CreateFrozenDashes(double d1, double d2)
+    {
+        var dc = new DoubleCollection { d1, d2 };
+        dc.Freeze();
+        return dc;
+    }
+
     private void DrawGraphGrid(Canvas canvas, double w, double h, int horizDivs = 4, int vertDivs = 4, bool showBorder = true)
     {
         if (canvas == null || w <= 0 || h <= 0) return;
 
-        MediaColor gridColor = _isDarkTheme ? MediaColor.FromArgb(48, 148, 163, 184) : MediaColor.FromArgb(48, 71, 85, 105);
-        MediaColor centerColor = _isDarkTheme ? MediaColor.FromArgb(80, 148, 163, 184) : MediaColor.FromArgb(75, 71, 85, 105);
-        MediaColor borderColor = _isDarkTheme ? MediaColor.FromArgb(50, 255, 255, 255) : MediaColor.FromArgb(40, 0, 0, 0);
+        var gridBrush = GraphHoverOverlay.GetBrush(_isDarkTheme ? MediaColor.FromArgb(48, 148, 163, 184) : MediaColor.FromArgb(48, 71, 85, 105));
+        var centerBrush = GraphHoverOverlay.GetBrush(_isDarkTheme ? MediaColor.FromArgb(80, 148, 163, 184) : MediaColor.FromArgb(75, 71, 85, 105));
+        var borderBrush = GraphHoverOverlay.GetBrush(_isDarkTheme ? MediaColor.FromArgb(50, 255, 255, 255) : MediaColor.FromArgb(40, 0, 0, 0));
 
         if (showBorder)
         {
@@ -1706,7 +1840,7 @@ public partial class MainWindow : Window
             {
                 Width = w,
                 Height = h,
-                Stroke = new SolidColorBrush(borderColor),
+                Stroke = borderBrush,
                 StrokeThickness = 1.0,
                 Fill = MediaBrushes.Transparent,
                 IsHitTestVisible = false
@@ -1721,9 +1855,9 @@ public partial class MainWindow : Window
             canvas.Children.Add(new Line
             {
                 X1 = 0, Y1 = gy, X2 = w, Y2 = gy,
-                Stroke = new SolidColorBrush(isCenter ? centerColor : gridColor),
+                Stroke = isCenter ? centerBrush : gridBrush,
                 StrokeThickness = isCenter ? 1.0 : 0.8,
-                StrokeDashArray = isCenter ? new DoubleCollection { 4, 3 } : new DoubleCollection { 2, 4 },
+                StrokeDashArray = isCenter ? s_dashCenter : s_dashGrid,
                 IsHitTestVisible = false
             });
         }
@@ -1736,9 +1870,9 @@ public partial class MainWindow : Window
             canvas.Children.Add(new Line
             {
                 X1 = gx, Y1 = 0, X2 = gx, Y2 = h,
-                Stroke = new SolidColorBrush(isCenter ? centerColor : gridColor),
+                Stroke = isCenter ? centerBrush : gridBrush,
                 StrokeThickness = isCenter ? 1.0 : 0.8,
-                StrokeDashArray = isCenter ? new DoubleCollection { 4, 3 } : new DoubleCollection { 2, 4 },
+                StrokeDashArray = isCenter ? s_dashCenter : s_dashGrid,
                 IsHitTestVisible = false
             });
         }
@@ -1757,6 +1891,7 @@ public partial class MainWindow : Window
 
         DrawGraphGrid(canvas, w, h, horizDivs: 4, vertDivs: 6, showBorder: true);
 
+        var tickBrush = GraphHoverOverlay.GetBrush(_isDarkTheme ? MediaColor.FromRgb(100, 116, 139) : MediaColor.FromRgb(148, 163, 184));
         // 24-hour time ticks (00:00, 04:00, 08:00, 12:00, 16:00, 20:00, 24:00)
         for (int hr = 0; hr <= 24; hr += 4)
         {
@@ -1764,7 +1899,7 @@ public partial class MainWindow : Window
             var lbl = new TextBlock
             {
                 Text = $"{hr:D2}:00",
-                Foreground = new SolidColorBrush(_isDarkTheme ? MediaColor.FromRgb(100, 116, 139) : MediaColor.FromRgb(148, 163, 184)),
+                Foreground = tickBrush,
                 FontSize = 8,
                 FontFamily = new MediaFontFamily("Consolas"),
                 IsHitTestVisible = false
@@ -1777,33 +1912,34 @@ public partial class MainWindow : Window
         if (rawHistory == null || rawHistory.Count == 0) return;
 
         DateTime todayMidnight = DateTime.Today;
-        var pts = new PointCollection();
-
-        for (int i = 0; i < rawHistory.Count; i++)
+        var geom = new StreamGeometry();
+        int validPts = 0;
+        using (var ctx = geom.Open())
         {
-            var p = rawHistory[i];
-            double sec = (p.Timestamp - todayMidnight).TotalSeconds;
-            if (sec >= 0 && sec <= 86400)
+            for (int i = 0; i < rawHistory.Count; i++)
             {
-                double px = (sec / 86400.0) * w;
-                double py = h - (Math.Clamp(p.Percent, 0f, 100f) / 100f * h);
-                pts.Add(new Point(px, py));
+                var p = rawHistory[i];
+                double sec = (p.Timestamp - todayMidnight).TotalSeconds;
+                if (sec >= 0 && sec <= 86400)
+                {
+                    double px = (sec / 86400.0) * w;
+                    double py = h - (Math.Clamp(p.Percent, 0f, 100f) / 100f * h);
+                    if (validPts == 0)
+                        ctx.BeginFigure(new Point(px, py), false, false);
+                    else
+                        ctx.LineTo(new Point(px, py), true, true);
+                    validPts++;
+                }
             }
         }
 
-        if (pts.Count > 1)
+        if (validPts > 1)
         {
-            var geom = new StreamGeometry();
-            using (var ctx = geom.Open())
-            {
-                ctx.BeginFigure(pts[0], false, false);
-                ctx.PolyLineTo(pts.Skip(1).ToList(), true, true);
-            }
-
+            geom.Freeze();
             canvas.Children.Add(new WpfPath
             {
                 Data = geom,
-                Stroke = new SolidColorBrush(DiscordBlurple),
+                Stroke = GraphHoverOverlay.GetBrush(AccentCobalt),
                 StrokeThickness = 1.8,
                 IsHitTestVisible = false
             });
@@ -1833,8 +1969,8 @@ public partial class MainWindow : Window
         DrawGraphGrid(canvas, w, h, horizDivs: 4, vertDivs: 4, showBorder: true);
 
         float maxVal = baseMax;
-        if (s1.Count > 0) maxVal = Math.Max(maxVal, s1.Max());
-        if (s2.Count > 0) maxVal = Math.Max(maxVal, s2.Max());
+        for (int i = 0; i < s1.Count; i++) if (s1[i] > maxVal) maxVal = s1[i];
+        for (int i = 0; i < s2.Count; i++) if (s2[i] > maxVal) maxVal = s2[i];
         if (maxVal <= 0) maxVal = 1f;
 
         void DrawSeries(List<float> series, MediaColor col)
@@ -1843,25 +1979,25 @@ public partial class MainWindow : Window
             double stepX = w / Math.Max(1, MaxHistoryPoints - 1);
             int startIdx = Math.Max(0, MaxHistoryPoints - series.Count);
 
-            var pts = new PointCollection();
-            for (int i = 0; i < series.Count; i++)
-            {
-                double px = (startIdx + i) * stepX;
-                double py = h - (Math.Clamp(series[i], 0f, maxVal) / maxVal * h);
-                pts.Add(new Point(px, py));
-            }
-
             var geom = new StreamGeometry();
             using (var ctx = geom.Open())
             {
-                ctx.BeginFigure(pts[0], false, false);
-                ctx.PolyLineTo(pts.Skip(1).ToList(), true, true);
+                double px0 = startIdx * stepX;
+                double py0 = h - (Math.Clamp(series[0], 0f, maxVal) / maxVal * h);
+                ctx.BeginFigure(new Point(px0, py0), false, false);
+                for (int i = 1; i < series.Count; i++)
+                {
+                    double px = (startIdx + i) * stepX;
+                    double py = h - (Math.Clamp(series[i], 0f, maxVal) / maxVal * h);
+                    ctx.LineTo(new Point(px, py), true, true);
+                }
             }
+            geom.Freeze();
 
             canvas.Children.Add(new WpfPath
             {
                 Data = geom,
-                Stroke = new SolidColorBrush(col),
+                Stroke = GraphHoverOverlay.GetBrush(col),
                 StrokeThickness = 1.4,
                 IsHitTestVisible = false
             });
@@ -1900,34 +2036,38 @@ public partial class MainWindow : Window
         if (data.Count < 2) return;
 
         float maxVal = baseMax;
-        if (data.Count > 0 && data.Max() > baseMax) maxVal = data.Max();
+        for (int i = 0; i < data.Count; i++)
+        {
+            if (data[i] > maxVal) maxVal = data[i];
+        }
         if (maxVal <= 0) maxVal = 1f;
 
         double stepX = w / Math.Max(1, MaxHistoryPoints - 1);
         int startIdx = Math.Max(0, MaxHistoryPoints - data.Count);
-
-        var pts = new PointCollection();
-        for (int i = 0; i < data.Count; i++)
-        {
-            double px = (startIdx + i) * stepX;
-            double py = h - (Math.Clamp(data[i], 0f, maxVal) / maxVal * h);
-            pts.Add(new Point(px, py));
-        }
+        double firstX = startIdx * stepX;
+        double firstY = h - (Math.Clamp(data[0], 0f, maxVal) / maxVal * h);
+        double lastX = (startIdx + data.Count - 1) * stepX;
 
         // Fill geometry
         var fillGeom = new StreamGeometry();
         using (var ctx = fillGeom.Open())
         {
-            ctx.BeginFigure(new Point(pts[0].X, h), true, true);
-            ctx.LineTo(pts[0], true, false);
-            ctx.PolyLineTo(pts.Skip(1).ToList(), true, true);
-            ctx.LineTo(new Point(pts.Last().X, h), true, false);
+            ctx.BeginFigure(new Point(firstX, h), true, true);
+            ctx.LineTo(new Point(firstX, firstY), true, false);
+            for (int i = 1; i < data.Count; i++)
+            {
+                double px = (startIdx + i) * stepX;
+                double py = h - (Math.Clamp(data[i], 0f, maxVal) / maxVal * h);
+                ctx.LineTo(new Point(px, py), true, true);
+            }
+            ctx.LineTo(new Point(lastX, h), true, false);
         }
+        fillGeom.Freeze();
 
         canvas.Children.Add(new WpfPath
         {
             Data = fillGeom,
-            Fill = new SolidColorBrush(fillColor),
+            Fill = GraphHoverOverlay.GetBrush(fillColor),
             IsHitTestVisible = false
         });
 
@@ -1935,14 +2075,20 @@ public partial class MainWindow : Window
         var strokeGeom = new StreamGeometry();
         using (var ctx = strokeGeom.Open())
         {
-            ctx.BeginFigure(pts[0], false, false);
-            ctx.PolyLineTo(pts.Skip(1).ToList(), true, true);
+            ctx.BeginFigure(new Point(firstX, firstY), false, false);
+            for (int i = 1; i < data.Count; i++)
+            {
+                double px = (startIdx + i) * stepX;
+                double py = h - (Math.Clamp(data[i], 0f, maxVal) / maxVal * h);
+                ctx.LineTo(new Point(px, py), true, true);
+            }
         }
+        strokeGeom.Freeze();
 
         canvas.Children.Add(new WpfPath
         {
             Data = strokeGeom,
-            Stroke = new SolidColorBrush(strokeColor),
+            Stroke = GraphHoverOverlay.GetBrush(strokeColor),
             StrokeThickness = 1.4,
             IsHitTestVisible = false
         });
@@ -2658,9 +2804,9 @@ public partial class MainWindow : Window
                             {
                                 valTxt.Text = item.MetricStr;
                                 if (item.ValueColor == MetricRed)
-                                    valTxt.Foreground = new SolidColorBrush(MetricRed);
+                                    valTxt.Foreground = GraphHoverOverlay.GetBrush(MetricRed);
                                 else if (item.ValueColor == MetricGreen)
-                                    valTxt.Foreground = new SolidColorBrush(MetricGreen);
+                                    valTxt.Foreground = GraphHoverOverlay.GetBrush(MetricGreen);
                                 else
                                     valTxt.SetResourceReference(TextBlock.ForegroundProperty, "BrushTextPrimary");
                             }
@@ -2689,9 +2835,9 @@ public partial class MainWindow : Window
                         {
                             valTxt.Text = item.MetricStr;
                             if (item.ValueColor == MetricRed)
-                                valTxt.Foreground = new SolidColorBrush(MetricRed);
+                                valTxt.Foreground = GraphHoverOverlay.GetBrush(MetricRed);
                             else if (item.ValueColor == MetricGreen)
-                                valTxt.Foreground = new SolidColorBrush(MetricGreen);
+                                valTxt.Foreground = GraphHoverOverlay.GetBrush(MetricGreen);
                             else
                                 valTxt.SetResourceReference(TextBlock.ForegroundProperty, "BrushTextPrimary");
                         }
@@ -2703,9 +2849,9 @@ public partial class MainWindow : Window
                         bar.Maximum = Math.Max(1f, item.MaxVal);
                         bar.Value = Math.Clamp(item.Val, 0f, bar.Maximum);
                         if (item.ValueColor == MetricRed)
-                            bar.Foreground = new SolidColorBrush(MetricRed);
+                            bar.Foreground = GraphHoverOverlay.GetBrush(MetricRed);
                         else if (item.ValueColor == MetricGreen)
-                            bar.Foreground = new SolidColorBrush(MetricGreen);
+                            bar.Foreground = GraphHoverOverlay.GetBrush(MetricGreen);
                         else
                             bar.SetResourceReference(WpfProgressBar.ForegroundProperty, "BrushAccentCobalt");
                     }
@@ -2746,9 +2892,9 @@ public partial class MainWindow : Window
                 VerticalAlignment = VerticalAlignment.Center
             };
             if (valueColor == MetricRed)
-                valTxt.Foreground = new SolidColorBrush(MetricRed);
+                valTxt.Foreground = GraphHoverOverlay.GetBrush(MetricRed);
             else if (valueColor == MetricGreen)
-                valTxt.Foreground = new SolidColorBrush(MetricGreen);
+                valTxt.Foreground = GraphHoverOverlay.GetBrush(MetricGreen);
             else
                 valTxt.SetResourceReference(TextBlock.ForegroundProperty, "BrushTextPrimary");
 
@@ -2815,9 +2961,9 @@ public partial class MainWindow : Window
                 Margin = new Thickness(0, 2, 0, 1)
             };
             if (valueColor == MetricRed)
-                valTxt.Foreground = new SolidColorBrush(MetricRed);
+                valTxt.Foreground = GraphHoverOverlay.GetBrush(MetricRed);
             else if (valueColor == MetricGreen)
-                valTxt.Foreground = new SolidColorBrush(MetricGreen);
+                valTxt.Foreground = GraphHoverOverlay.GetBrush(MetricGreen);
             else
                 valTxt.SetResourceReference(TextBlock.ForegroundProperty, "BrushTextPrimary");
 
@@ -2835,9 +2981,9 @@ public partial class MainWindow : Window
             Margin = new Thickness(0, 2, 0, 0)
         };
         if (valueColor == MetricRed)
-            bar.Foreground = new SolidColorBrush(MetricRed);
+            bar.Foreground = GraphHoverOverlay.GetBrush(MetricRed);
         else if (valueColor == MetricGreen)
-            bar.Foreground = new SolidColorBrush(MetricGreen);
+            bar.Foreground = GraphHoverOverlay.GetBrush(MetricGreen);
         else
             bar.SetResourceReference(WpfProgressBar.ForegroundProperty, "BrushAccentCobalt");
 
@@ -2853,8 +2999,15 @@ public partial class MainWindow : Window
         // Prevent background telemetry tick from interrupting active mouse drag/resize
         if (Mouse.LeftButton == MouseButtonState.Pressed) return;
 
-        var procs = source ?? _latestSnapshot?.Processes?.AllProcesses;
+        var procs = source ?? (_isProcessesPaused ? _pausedProcessesSnapshot?.AllProcesses : null) ?? _latestSnapshot?.Processes?.AllProcesses;
         if (procs == null) return;
+
+        if (!ReferenceEquals(GridAllProcesses.ItemsSource, _processGridItems))
+        {
+            GridAllProcesses.ItemsSource = _processGridItems;
+        }
+
+        string? selectedName = (GridAllProcesses.SelectedItem as ProcessItem)?.Name;
 
         IEnumerable<ProcessItem> filtered = procs;
         if (!string.IsNullOrEmpty(_processFilter) && !_processFilter.StartsWith("Filter processes", StringComparison.OrdinalIgnoreCase))
@@ -2898,9 +3051,167 @@ public partial class MainWindow : Window
             };
         }
 
-        var list = filtered.ToList();
-        GridAllProcesses.ItemsSource = list;
-        if (TxtProcessCount != null) TxtProcessCount.Text = $"{list.Count} Active Processes";
+        var list = filtered as List<ProcessItem> ?? filtered.ToList();
+        var activeNames = new HashSet<string>(list.Count, StringComparer.OrdinalIgnoreCase);
+        var targetItems = new List<ProcessItem>(list.Count);
+
+        for (int i = 0; i < list.Count; i++)
+        {
+            var src = list[i];
+            activeNames.Add(src.Name);
+            if (!_processGridMap.TryGetValue(src.Name, out var persistent))
+            {
+                persistent = new ProcessItem { Name = src.Name };
+                _processGridMap[src.Name] = persistent;
+            }
+            bool shouldExpand = src.HasChildren && _expandedProcessNames.Contains(src.Name);
+            persistent.UpdateFrom(src, shouldExpand);
+            targetItems.Add(persistent);
+        }
+
+        for (int i = _processGridItems.Count - 1; i >= 0; i--)
+        {
+            if (!activeNames.Contains(_processGridItems[i].Name))
+            {
+                _processGridItems.RemoveAt(i);
+            }
+        }
+
+        for (int i = 0; i < targetItems.Count; i++)
+        {
+            var desired = targetItems[i];
+            if (i < _processGridItems.Count)
+            {
+                if (ReferenceEquals(_processGridItems[i], desired))
+                    continue;
+
+                int existingIdx = _processGridItems.IndexOf(desired);
+                if (existingIdx > i)
+                {
+                    _processGridItems.Move(existingIdx, i);
+                }
+                else if (existingIdx < 0)
+                {
+                    _processGridItems.Insert(i, desired);
+                }
+            }
+            else
+            {
+                _processGridItems.Add(desired);
+            }
+        }
+
+        if (selectedName != null && GridAllProcesses.SelectedItem == null && _processGridMap.TryGetValue(selectedName, out var restoredItem) && activeNames.Contains(selectedName))
+        {
+            GridAllProcesses.SelectedItem = restoredItem;
+        }
+
+        if (TxtProcessCount != null)
+        {
+            TxtProcessCount.Text = _isProcessesPaused ? $"{list.Count} Active Processes (Paused)" : $"{list.Count} Active Processes";
+        }
+    }
+
+    private void BtnPauseProcesses_Click(object sender, RoutedEventArgs e)
+    {
+        _isProcessesPaused = BtnPauseProcesses?.IsChecked == true;
+        if (BtnPauseProcesses != null)
+        {
+            BtnPauseProcesses.Content = _isProcessesPaused ? "Paused (Resume)" : "Pause";
+        }
+
+        if (_isProcessesPaused)
+        {
+            _pausedProcessesSnapshot = _latestSnapshot?.Processes;
+            if (TxtProcessCount != null)
+            {
+                TxtProcessCount.Text = $"{_processGridItems.Count} Active Processes (Paused)";
+            }
+        }
+        else
+        {
+            _pausedProcessesSnapshot = null;
+            if (_latestSnapshot?.Processes != null)
+            {
+                RenderProcessTopCards(_latestSnapshot.Processes);
+                ApplyProcessSortingAndFilter(_latestSnapshot.Processes.AllProcesses);
+            }
+        }
+    }
+
+    private void GridAllProcesses_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.OriginalSource is not DependencyObject dep) return;
+
+        DependencyObject? curr = dep;
+        while (curr != null && !ReferenceEquals(curr, GridAllProcesses))
+        {
+            if (curr is System.Windows.Controls.Primitives.DataGridColumnHeader ||
+                curr is System.Windows.Controls.Primitives.ScrollBar ||
+                curr is System.Windows.Controls.Primitives.Thumb)
+            {
+                return;
+            }
+            if (curr is DataGridRow row)
+            {
+                if (row.Item is ProcessItem item)
+                {
+                    if (item.HasChildren)
+                    {
+                        bool newState = !item.IsExpanded;
+                        item.IsExpanded = newState;
+                        if (newState)
+                        {
+                            _expandedProcessNames.Add(item.Name);
+                        }
+                        else
+                        {
+                            _expandedProcessNames.Remove(item.Name);
+                            if (ReferenceEquals(GridAllProcesses.SelectedItem, item))
+                            {
+                                GridAllProcesses.SelectedItem = null;
+                                e.Handled = true;
+                            }
+                        }
+                    }
+                    else if (ReferenceEquals(GridAllProcesses.SelectedItem, item))
+                    {
+                        GridAllProcesses.SelectedItem = null;
+                        e.Handled = true;
+                    }
+                }
+                return;
+            }
+            curr = curr is Visual || curr is System.Windows.Media.Media3D.Visual3D
+                ? VisualTreeHelper.GetParent(curr)
+                : LogicalTreeHelper.GetParent(curr);
+        }
+    }
+
+    private void GridAllProcesses_PreviewMouseRightButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        bool anyChanged = _expandedProcessNames.Count > 0;
+        _expandedProcessNames.Clear();
+
+        for (int i = 0; i < _processGridItems.Count; i++)
+        {
+            if (_processGridItems[i].IsExpanded)
+            {
+                _processGridItems[i].IsExpanded = false;
+                anyChanged = true;
+            }
+        }
+
+        if (GridAllProcesses.SelectedItem != null)
+        {
+            GridAllProcesses.SelectedItem = null;
+            anyChanged = true;
+        }
+
+        if (anyChanged)
+        {
+            e.Handled = true;
+        }
     }
 
     private void GridAllProcesses_Sorting(object sender, DataGridSortingEventArgs e)
@@ -2934,7 +3245,8 @@ public partial class MainWindow : Window
             if (!string.IsNullOrEmpty(_activeProcessSortColumn)) column.SortDirection = _activeProcessSortDirection;
         }
 
-        if (_latestSnapshot?.Processes != null) ApplyProcessSortingAndFilter(_latestSnapshot.Processes.AllProcesses);
+        var activeProcs = (_isProcessesPaused ? _pausedProcessesSnapshot : _latestSnapshot?.Processes) ?? _latestSnapshot?.Processes;
+        if (activeProcs != null) ApplyProcessSortingAndFilter(activeProcs.AllProcesses);
     }
 
     private const string ProcessFilterPlaceholder = "Filter processes (e.g. chrome, code)...";
@@ -2944,7 +3256,8 @@ public partial class MainWindow : Window
         if (TxtProcessFilter == null) return;
         _processFilter = TxtProcessFilter.Text.Trim();
         if (_processFilter.StartsWith("Filter processes", StringComparison.OrdinalIgnoreCase)) _processFilter = "";
-        if (_latestSnapshot?.Processes != null) ApplyProcessSortingAndFilter(_latestSnapshot.Processes.AllProcesses);
+        var activeProcs = (_isProcessesPaused ? _pausedProcessesSnapshot : _latestSnapshot?.Processes) ?? _latestSnapshot?.Processes;
+        if (activeProcs != null) ApplyProcessSortingAndFilter(activeProcs.AllProcesses);
     }
 
     private void TxtProcessFilter_GotFocus(object sender, RoutedEventArgs e)

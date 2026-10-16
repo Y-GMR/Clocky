@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
 
 namespace Clocky.Core;
 
@@ -7,6 +9,7 @@ public class SensorRecord
 {
     private readonly Queue<float> _recentSamples = new(64);
     private double _sumDouble;
+    private double _windowSum;
 
     public string Category { get; set; } = "";
     public string Group { get; set; } = "";
@@ -47,12 +50,13 @@ public class SensorRecord
         Count++;
 
         _recentSamples.Enqueue(val);
+        _windowSum += val;
         while (_recentSamples.Count > 60)
         {
-            _recentSamples.Dequeue();
+            _windowSum -= _recentSamples.Dequeue();
         }
 
-        Avg = _recentSamples.Count > 0 ? (float)_recentSamples.Average() : val;
+        Avg = _recentSamples.Count > 0 ? (float)(_windowSum / _recentSamples.Count) : val;
     }
 
     public void Reset(float val = 0f)
@@ -62,6 +66,7 @@ public class SensorRecord
         Max = val;
         Avg = val;
         _sumDouble = val;
+        _windowSum = val;
         Count = 1;
         _recentSamples.Clear();
         _recentSamples.Enqueue(val);
@@ -79,6 +84,9 @@ public class SensorRecord
 public class CoreTelemetry
 {
     public int Index { get; set; }
+    public int CoreNumber { get; set; }
+    public int SmtThreadNumber { get; set; }
+    public bool IsSmt { get; set; }
     public string CoreType { get; set; } = "Core";
     public float Load { get; set; }
     public float Temp { get; set; }
@@ -176,8 +184,8 @@ public class TelemetrySnapshot
     public float GpuFanSpeedPercent { get; set; }
 
     // Memory
-    public string RamTypeStr { get; set; } = "DDR5";
-    public int RamSpeedMt { get; set; } = 5600;
+    public string RamTypeStr { get; set; } = "RAM";
+    public int RamSpeedMt { get; set; } = 0;
     public float RamUsedGb { get; set; }
     public float RamAvailableGb { get; set; }
     public float RamTotalGb { get; set; }
@@ -222,8 +230,11 @@ public class TelemetrySnapshot
     public List<SensorRecord> AllSensors { get; set; } = new();
 }
 
-public class ProcessItem
+public class ProcessItem : INotifyPropertyChanged
 {
+    public event PropertyChangedEventHandler? PropertyChanged;
+    private void OnPropertyChanged(string name) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+
     public int Pid { get; set; }
     public string Name { get; set; } = "";
     public int InstanceCount { get; set; } = 1;
@@ -271,12 +282,197 @@ public class ProcessItem
     public string Status { get; set; } = "Running";
 
     public List<ProcessInstanceItem> Children { get; set; } = new();
+    public ObservableCollection<ProcessInstanceItem> ObservableChildren { get; } = new();
     public bool HasChildren => Children.Count > 1;
-    public bool IsExpanded { get; set; }
+
+    private bool _isExpanded;
+    public bool IsExpanded
+    {
+        get => _isExpanded;
+        set
+        {
+            if (_isExpanded != value)
+            {
+                _isExpanded = value;
+                if (_isExpanded)
+                    SyncObservableChildren();
+                else if (ObservableChildren.Count > 0)
+                    ObservableChildren.Clear();
+                OnPropertyChanged(nameof(IsExpanded));
+                OnPropertyChanged(nameof(DetailsVisible));
+            }
+        }
+    }
+
+    public bool DetailsVisible => HasChildren && _isExpanded;
+
+    public void UpdateFrom(ProcessItem src, bool isExpanded)
+    {
+        bool pidOrCountChanged = Pid != src.Pid || InstanceCount != src.InstanceCount;
+        bool nameChanged = !string.Equals(Name, src.Name, StringComparison.Ordinal);
+        bool oldHasChildren = HasChildren;
+
+        Pid = src.Pid;
+        Name = src.Name;
+        InstanceCount = src.InstanceCount;
+        Children = src.Children;
+
+        if (pidOrCountChanged)
+        {
+            OnPropertyChanged(nameof(Pid));
+            OnPropertyChanged(nameof(InstanceCount));
+            OnPropertyChanged(nameof(FormattedPid));
+        }
+        if (pidOrCountChanged || nameChanged)
+        {
+            OnPropertyChanged(nameof(Name));
+            OnPropertyChanged(nameof(DisplayName));
+        }
+
+        if (Math.Abs(CpuPercent - src.CpuPercent) >= 0.05f)
+        {
+            CpuPercent = src.CpuPercent;
+            OnPropertyChanged(nameof(CpuPercent));
+            OnPropertyChanged(nameof(FormattedCpu));
+        }
+        else
+        {
+            CpuPercent = src.CpuPercent;
+        }
+
+        if (Math.Abs(GpuPercent - src.GpuPercent) >= 0.05f || Math.Abs(GpuVramMb - src.GpuVramMb) >= 0.5f)
+        {
+            GpuPercent = src.GpuPercent;
+            GpuVramMb = src.GpuVramMb;
+            OnPropertyChanged(nameof(GpuPercent));
+            OnPropertyChanged(nameof(FormattedGpu));
+            OnPropertyChanged(nameof(GpuVramMb));
+            OnPropertyChanged(nameof(FormattedGpuVram));
+        }
+        else
+        {
+            GpuPercent = src.GpuPercent;
+            GpuVramMb = src.GpuVramMb;
+        }
+
+        if (PrivateMemoryBytes != src.PrivateMemoryBytes)
+        {
+            PrivateMemoryBytes = src.PrivateMemoryBytes;
+            OnPropertyChanged(nameof(PrivateMemoryBytes));
+            OnPropertyChanged(nameof(FormattedPrivateMemory));
+        }
+
+        if (WorkingSetBytes != src.WorkingSetBytes)
+        {
+            WorkingSetBytes = src.WorkingSetBytes;
+            OnPropertyChanged(nameof(WorkingSetBytes));
+            OnPropertyChanged(nameof(FormattedWorkingSet));
+        }
+
+        if (Math.Abs(DiskReadMBps - src.DiskReadMBps) >= 0.05f)
+        {
+            DiskReadMBps = src.DiskReadMBps;
+            OnPropertyChanged(nameof(DiskReadMBps));
+            OnPropertyChanged(nameof(FormattedDiskRead));
+            OnPropertyChanged(nameof(FormattedDiskIo));
+        }
+        else
+        {
+            DiskReadMBps = src.DiskReadMBps;
+        }
+
+        if (Math.Abs(DiskWriteMBps - src.DiskWriteMBps) >= 0.05f)
+        {
+            DiskWriteMBps = src.DiskWriteMBps;
+            OnPropertyChanged(nameof(DiskWriteMBps));
+            OnPropertyChanged(nameof(FormattedDiskWrite));
+            OnPropertyChanged(nameof(FormattedDiskIo));
+        }
+        else
+        {
+            DiskWriteMBps = src.DiskWriteMBps;
+        }
+
+        if (EstablishedSockets != src.EstablishedSockets || ActiveSockets != src.ActiveSockets)
+        {
+            EstablishedSockets = src.EstablishedSockets;
+            ActiveSockets = src.ActiveSockets;
+            OnPropertyChanged(nameof(EstablishedSockets));
+            OnPropertyChanged(nameof(ActiveSockets));
+            OnPropertyChanged(nameof(FormattedSockets));
+            OnPropertyChanged(nameof(FormattedActiveNet));
+        }
+
+        NetDownSpeedKBps = src.NetDownSpeedKBps;
+        NetUpSpeedKBps = src.NetUpSpeedKBps;
+
+        if (ThreadCount != src.ThreadCount)
+        {
+            ThreadCount = src.ThreadCount;
+            OnPropertyChanged(nameof(ThreadCount));
+        }
+
+        if (!string.Equals(Status, src.Status, StringComparison.Ordinal))
+        {
+            Status = src.Status;
+            OnPropertyChanged(nameof(Status));
+        }
+
+        bool newHasChildren = HasChildren;
+        bool effectiveExpanded = newHasChildren && isExpanded;
+        if (_isExpanded != effectiveExpanded || oldHasChildren != newHasChildren)
+        {
+            _isExpanded = effectiveExpanded;
+            if (_isExpanded)
+                SyncObservableChildren();
+            else if (ObservableChildren.Count > 0)
+                ObservableChildren.Clear();
+            OnPropertyChanged(nameof(HasChildren));
+            OnPropertyChanged(nameof(IsExpanded));
+            OnPropertyChanged(nameof(DetailsVisible));
+        }
+        else if (_isExpanded)
+        {
+            SyncObservableChildren();
+        }
+    }
+
+    private void SyncObservableChildren()
+    {
+        if (!HasChildren)
+        {
+            if (ObservableChildren.Count > 0) ObservableChildren.Clear();
+            return;
+        }
+
+        int targetCount = Children.Count;
+        while (ObservableChildren.Count > targetCount)
+        {
+            ObservableChildren.RemoveAt(ObservableChildren.Count - 1);
+        }
+
+        for (int i = 0; i < targetCount; i++)
+        {
+            var srcChild = Children[i];
+            if (i < ObservableChildren.Count)
+            {
+                ObservableChildren[i].UpdateFrom(srcChild);
+            }
+            else
+            {
+                var copy = new ProcessInstanceItem();
+                copy.UpdateFrom(srcChild);
+                ObservableChildren.Add(copy);
+            }
+        }
+    }
 }
 
-public class ProcessInstanceItem
+public class ProcessInstanceItem : INotifyPropertyChanged
 {
+    public event PropertyChangedEventHandler? PropertyChanged;
+    private void OnPropertyChanged(string name) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+
     public int Pid { get; set; }
     public string FormattedPid => Pid.ToString();
     public string Name { get; set; } = "";
@@ -303,6 +499,74 @@ public class ProcessInstanceItem
     public int ActiveSockets { get; set; }
     public int ThreadCount { get; set; }
     public string Status { get; set; } = "Running";
+
+    public void UpdateFrom(ProcessInstanceItem src)
+    {
+        if (Pid != src.Pid)
+        {
+            Pid = src.Pid;
+            OnPropertyChanged(nameof(Pid));
+            OnPropertyChanged(nameof(FormattedPid));
+        }
+        if (!string.Equals(Name, src.Name, StringComparison.Ordinal))
+        {
+            Name = src.Name;
+            OnPropertyChanged(nameof(Name));
+        }
+        CreateTime = src.CreateTime;
+
+        if (Math.Abs(CpuPercent - src.CpuPercent) >= 0.05f)
+        {
+            CpuPercent = src.CpuPercent;
+            OnPropertyChanged(nameof(CpuPercent));
+            OnPropertyChanged(nameof(FormattedCpu));
+        }
+        else
+        {
+            CpuPercent = src.CpuPercent;
+        }
+
+        if (Math.Abs(GpuPercent - src.GpuPercent) >= 0.05f)
+        {
+            GpuPercent = src.GpuPercent;
+            OnPropertyChanged(nameof(GpuPercent));
+            OnPropertyChanged(nameof(FormattedGpu));
+        }
+        else
+        {
+            GpuPercent = src.GpuPercent;
+        }
+
+        GpuVramMb = src.GpuVramMb;
+
+        if (PrivateMemoryBytes != src.PrivateMemoryBytes)
+        {
+            PrivateMemoryBytes = src.PrivateMemoryBytes;
+            OnPropertyChanged(nameof(PrivateMemoryBytes));
+            OnPropertyChanged(nameof(FormattedPrivateMemory));
+        }
+
+        if (WorkingSetBytes != src.WorkingSetBytes)
+        {
+            WorkingSetBytes = src.WorkingSetBytes;
+            OnPropertyChanged(nameof(WorkingSetBytes));
+            OnPropertyChanged(nameof(FormattedWorkingSet));
+        }
+
+        DiskReadMBps = src.DiskReadMBps;
+        DiskWriteMBps = src.DiskWriteMBps;
+        NetDownSpeedKBps = src.NetDownSpeedKBps;
+        NetUpSpeedKBps = src.NetUpSpeedKBps;
+        EstablishedSockets = src.EstablishedSockets;
+        ActiveSockets = src.ActiveSockets;
+        ThreadCount = src.ThreadCount;
+
+        if (!string.Equals(Status, src.Status, StringComparison.Ordinal))
+        {
+            Status = src.Status;
+            OnPropertyChanged(nameof(Status));
+        }
+    }
 }
 
 public class ProcessTelemetrySnapshot

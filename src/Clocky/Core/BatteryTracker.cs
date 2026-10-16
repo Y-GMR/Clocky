@@ -25,12 +25,17 @@ public class BatteryHistoryState
 
 public class BatteryTracker
 {
+    private static readonly JsonSerializerOptions s_jsonOptions = new();
     private readonly string _filePath;
     private BatteryHistoryState _state = new();
-    private DateTime _lastRecordTime = DateTime.MinValue;
+    private DateTime _lastSampleTime = DateTime.MinValue;
+    private DateTime _lastAnchorTime = DateTime.MinValue;
     private DateTime _lastDiskSaveTime = DateTime.MinValue;
     private float _lastPercent = -1f;
-    private const int MaxStoredPoints = 100000;
+    private float _lastAnchorPercent = -1f;
+    private bool _lastIsAc;
+    private bool _trailingPointIsLive;
+    private const int MaxStoredPoints = 2880; // 24h at 30s resolution
 
     public int HardwareCycleCount => _state.HardwareCycleCount;
     public float CumulativeChargedWh => _state.CumulativeChargedWh;
@@ -176,10 +181,9 @@ public class BatteryTracker
         var now = DateTime.Now;
         bool isGap = false;
 
-        if (_lastRecordTime != DateTime.MinValue)
+        if (_lastSampleTime != DateTime.MinValue)
         {
-            var delta = now - _lastRecordTime;
-            if (delta.TotalSeconds > 15.0) // App was closed or offline
+            if ((now - _lastSampleTime).TotalSeconds > 30.0) // App was closed or asleep
             {
                 isGap = true;
             }
@@ -192,21 +196,65 @@ public class BatteryTracker
             }
         }
 
-        _lastRecordTime = now;
+        _lastSampleTime = now;
         _lastPercent = percent;
 
-        _state.Points.Add(new BatteryPoint
-        {
-            Timestamp = now,
-            Percent = percent,
-            IsAc = isAc,
-            RateWatts = rateWatts,
-            IsGapStart = isGap
-        });
+        bool isStateChange = _state.Points.Count == 0 || isGap || isAc != _lastIsAc || Math.Abs(percent - _lastAnchorPercent) >= 0.5f;
+        bool anchorDue = (now - _lastAnchorTime).TotalSeconds >= 30.0;
 
-        while (_state.Points.Count > MaxStoredPoints)
+        if (isStateChange || anchorDue || _state.Points.Count < 2)
         {
-            _state.Points.RemoveAt(0);
+            if (_trailingPointIsLive && !isGap && isAc == _lastIsAc && _state.Points.Count > 0)
+            {
+                // Promote live trailing point into the new 30s anchor
+                var tail = _state.Points[^1];
+                tail.Timestamp = now;
+                tail.Percent = percent;
+                tail.IsAc = isAc;
+                tail.RateWatts = rateWatts;
+                _trailingPointIsLive = false;
+            }
+            else
+            {
+                _state.Points.Add(new BatteryPoint
+                {
+                    Timestamp = now,
+                    Percent = percent,
+                    IsAc = isAc,
+                    RateWatts = rateWatts,
+                    IsGapStart = isGap
+                });
+                _trailingPointIsLive = false;
+            }
+
+            _lastAnchorTime = now;
+            _lastAnchorPercent = percent;
+            _lastIsAc = isAc;
+        }
+        else if (_trailingPointIsLive && _state.Points.Count > 0)
+        {
+            // Update trailing live point in-place without growing list every 1s
+            var tail = _state.Points[^1];
+            tail.Timestamp = now;
+            tail.Percent = percent;
+            tail.RateWatts = rateWatts;
+        }
+        else
+        {
+            _state.Points.Add(new BatteryPoint
+            {
+                Timestamp = now,
+                Percent = percent,
+                IsAc = isAc,
+                RateWatts = rateWatts,
+                IsGapStart = false
+            });
+            _trailingPointIsLive = true;
+        }
+
+        if (_state.Points.Count > MaxStoredPoints)
+        {
+            _state.Points.RemoveRange(0, _state.Points.Count - MaxStoredPoints);
         }
 
         // Ultra-Light I/O Optimization: Buffer disk writes to once every 60 seconds or on gap
@@ -229,14 +277,41 @@ public class BatteryTracker
             if (File.Exists(_filePath))
             {
                 string json = File.ReadAllText(_filePath);
-                var loaded = JsonSerializer.Deserialize<BatteryHistoryState>(json);
+                var loaded = JsonSerializer.Deserialize<BatteryHistoryState>(json, s_jsonOptions);
                 if (loaded != null && loaded.Points != null)
                 {
+                    if (loaded.Points.Count > MaxStoredPoints)
+                    {
+                        // Downsample legacy 1-second history files to 30-second intervals while preserving gaps/transitions
+                        var compacted = new List<BatteryPoint>(MaxStoredPoints);
+                        DateTime lastKept = DateTime.MinValue;
+                        bool lastAc = false;
+                        for (int i = 0; i < loaded.Points.Count; i++)
+                        {
+                            var pt = loaded.Points[i];
+                            if (i == 0 || i == loaded.Points.Count - 1 || pt.IsGapStart || pt.IsAc != lastAc || (pt.Timestamp - lastKept).TotalSeconds >= 30.0)
+                            {
+                                compacted.Add(pt);
+                                lastKept = pt.Timestamp;
+                                lastAc = pt.IsAc;
+                            }
+                        }
+                        if (compacted.Count > MaxStoredPoints)
+                        {
+                            compacted.RemoveRange(0, compacted.Count - MaxStoredPoints);
+                        }
+                        loaded.Points = compacted;
+                    }
+
                     _state = loaded;
                     if (_state.Points.Count > 0)
                     {
-                        _lastRecordTime = _state.Points.Last().Timestamp;
-                        _lastPercent = _state.Points.Last().Percent;
+                        var last = _state.Points[^1];
+                        _lastSampleTime = last.Timestamp;
+                        _lastAnchorTime = last.Timestamp;
+                        _lastPercent = last.Percent;
+                        _lastAnchorPercent = last.Percent;
+                        _lastIsAc = last.IsAc;
                     }
                 }
             }
@@ -248,11 +323,7 @@ public class BatteryTracker
     {
         try
         {
-            var options = new JsonSerializerOptions
-            {
-                WriteIndented = true
-            };
-            string json = JsonSerializer.Serialize(_state, options);
+            string json = JsonSerializer.Serialize(_state, s_jsonOptions);
             File.WriteAllText(_filePath, json);
         }
         catch { }

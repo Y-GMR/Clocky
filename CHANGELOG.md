@@ -4,6 +4,28 @@ All notable changes to Clocky are documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## [1.4.0] - 2026-10-16
+
+### Added
+- Pause and resume toggle (`BtnPauseProcesses`) in Processes & Apps toolbar to freeze live process table and top-consumer cards during inspection while retaining interactive sorting, filtering, and child row expansion.
+- Independent multi-dropdown expansion in Process Observability Matrix: left-clicking multi-instance process rows toggles child PID details open or closed independently, and right-clicking anywhere in the table collapses all open dropdowns.
+- Immediate synchronous process enumeration (`RefreshDetailedProcessesNow`) when switching to the Processes & Apps view so the table populates without waiting for the next background timer tick.
+- Native SMBIOS Type 17 (`GetSystemFirmwareTable` `'RSMB'`) memory device parsing in `SystemHardwareHelper.GetRamInfo` supporting DDR2 through LPDDR5X (`0x12`–`0x23`) and configured memory clock speeds before falling back to WMI.
+- Native Win32 SetupAPI and `IOCTL_BATTERY_QUERY_INFORMATION` (`CreateFile` on `GUID_DEVINTERFACE_BATTERY`) battery capacity and cycle count queries in `BatteryTracker.UpdateCapacities`, replacing WMI `BatteryFullChargedCapacity` / `BatteryStaticData` queries.
+- Expanded hardware and network universality: Intel Core Ultra, AMD Ryzen AI, and Qualcomm Snapdragon X Elite/Plus regex formatting in `SystemHardwareHelper`, dynamic `IOCTL_STORAGE_QUERY_PROPERTY` buffer scaling for Storage Spaces/VHDX volumes, and 802.11ax/be, USB4/Thunderbolt, and WireGuard/Tailscale/ZeroTier adapter classification in `NetworkTracker`.
+
+### Changed
+- Replaced per-instance `PerformanceCounter` handle creation in `ProcessTracker.PollGpuCounters` with single-call `PerformanceCounterCategory.ReadCategory()` batch snapshots and `CounterSample.Calculate`, eliminating 1,500+ OS counter handles and reducing detailed process poll time from ~550 ms to ~13 ms.
+- Gated per-adapter IPv4/DNS/gateway and sparkline history allocations in `NetworkTracker.Poll` behind `DetailedMode`, reducing background network polling overhead from ~65 ms to <1 ms when the Network tab is inactive.
+- Refactored `GridAllProcesses` data binding to update persistent `ObservableCollection<ProcessItem>` and `ProcessInstanceItem` instances in-place via `INotifyPropertyChanged`, and pre-allocated Top-3 process card UI containers in `MainWindow`.
+- Replaced per-tick WPF brush, dash-array, and inline text allocations across oscilloscope graphs and core cells in `MainWindow` with cached frozen `SolidColorBrush` and `DoubleCollection` instances.
+
+### Fixed
+- Fixed row selection and mouse-hover highlight flicker on 1-second telemetry polls in `MainWindow.xaml` by preserving `DataGridRow` containers across updates and ordering `IsSelected` style triggers after `IsMouseOver`.
+- Fixed dual-baseline sample window handling in `ProcessTracker.Poll` so on-demand tab switches compute non-zero CPU, Disk, and Network deltas even when invoked shortly after a background tick.
+
+---
+
 ## [1.3.1] - 2026-09-12
 
 ### Added

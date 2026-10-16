@@ -1,8 +1,8 @@
 {
-  "version": "1.3.1",
-  "releaseDate": "2026-09-12",
-  "changelog": "AMD Zen thermal and core detection, UI model name trimming and tooltips, zero synthetic fallback enforcement, and ProcessTracker resource disposal.",
+  "version": "1.4.0",
+  "releaseDate": "2026-10-16",
+  "changelog": "Batch GPU/process and network polling optimizations, native SMBIOS and Win32 battery IOCTL universality, process table pause toggle, flicker-free in-place row updates, and multi-dropdown expansion.",
   "downloadUrl": "https://github.com/Y-GMR/Clocky/releases/latest/download/Clocky.exe",
   "mandatory": false,
-  "sha256": "a1ad8574f658aa46f15396fa9a1a36f3547a8c53344f70d6c9fbe491efd90bec"
+  "sha256": "1fbca82d826acf94073ca0bf3166edf6fd3e9cdbc5d25e513bbc30312ce39d65"
 }
