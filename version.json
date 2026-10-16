@@ -4,5 +4,5 @@
   "changelog": "Batch GPU/process and network polling optimizations, native SMBIOS and Win32 battery IOCTL universality, process table pause toggle, flicker-free in-place row updates, and multi-dropdown expansion.",
   "downloadUrl": "https://github.com/Y-GMR/Clocky/releases/latest/download/Clocky.exe",
   "mandatory": false,
-  "sha256": "1fbca82d826acf94073ca0bf3166edf6fd3e9cdbc5d25e513bbc30312ce39d65"
+  "sha256": "77dda42266492b2ba3b46eb392a0f95a62b837871f4a70ce39e4c573ce57455f"
 }
