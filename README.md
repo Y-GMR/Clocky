@@ -1,8 +1,9 @@
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/clocky_title_dark.png">
-  <source media="(prefers-color-scheme: light)" srcset="docs/assets/clocky_title_light.png">
-  <img alt="Clocky" src="docs/assets/clocky_title_dark.png" width="320">
-</picture>
+<a href="https://github.com/Y-GMR/Clocky#gh-dark-mode-only">
+  <img alt="Clocky" src="https://raw.githubusercontent.com/Y-GMR/Clocky/master/docs/assets/clocky_title_dark.png#gh-dark-mode-only" width="320">
+</a>
+<a href="https://github.com/Y-GMR/Clocky#gh-light-mode-only">
+  <img alt="Clocky" src="https://raw.githubusercontent.com/Y-GMR/Clocky/master/docs/assets/clocky_title_light.png#gh-light-mode-only" width="320">
+</a>
 
 Hardware telemetry and observability platform for Windows 10 and 11 (x64), built with .NET 9 and WPF.
 
