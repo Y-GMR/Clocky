@@ -4,6 +4,20 @@ All notable changes to Clocky are documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## [1.4.1] - 2026-11-03
+
+### Changed
+- Integrated native Win32 `CallNtPowerInformation` (`SystemBatteryState`) in `HardwareEngine` to sample kernel-level battery charge and discharge rates directly in milliwatts, ensuring universal battery telemetry across OEM architectures.
+- Expanded performance counter instance matching in `SystemHardwareHelper.GetRaplPowerWatts` to recognize `Package`, `Total`, and `RAPL` instances alongside `PKG`.
+
+### Fixed
+- Fixed process table child PID dropdowns vanishing during scrolling in `MainWindow.xaml` by configuring `VirtualizingPanel.ScrollUnit="Pixel"` and switching `VirtualizingMode` to `Standard` with page-length cache buffers on `GridAllProcesses`.
+- Fixed SMART health and temperature telemetry flipping or duplicating onto external SSDs in `HardwareEngine` by binding storage telemetry strictly to Windows `PhysicalDrive` numbers parsed from LibreHardwareMonitor storage identifiers and removing the hardcoded fallback to disk `0`.
+- Fixed static drive descriptor and device number cache staleness during USB storage hot-swapping, adding automatic storage controller rescan on physical drive count changes.
+- Fixed total system power over-reporting on AMD APUs by deduplicating integrated Radeon graphics package power slices already included in CPU package wattage.
+
+---
+
 ## [1.4.0] - 2026-10-16
 
 ### Added

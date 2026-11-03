@@ -439,7 +439,7 @@ public static class SystemHardwareHelper
             {
                 var cat = new System.Diagnostics.PerformanceCounterCategory("Energy Meter");
                 var insts = cat.GetInstanceNames();
-                string? pkgInst = insts.FirstOrDefault(i => i.Contains("PKG", StringComparison.OrdinalIgnoreCase));
+                string? pkgInst = insts.FirstOrDefault(i => i.Contains("PKG", StringComparison.OrdinalIgnoreCase) || i.Contains("Package", StringComparison.OrdinalIgnoreCase) || i.Contains("Total", StringComparison.OrdinalIgnoreCase) || i.Contains("RAPL", StringComparison.OrdinalIgnoreCase)) ?? insts.FirstOrDefault();
                 string? coreInst = insts.FirstOrDefault(i => i.Contains("PP0", StringComparison.OrdinalIgnoreCase) || i.Contains("Core", StringComparison.OrdinalIgnoreCase));
 
                 if (pkgInst != null)

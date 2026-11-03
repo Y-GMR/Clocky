@@ -59,6 +59,7 @@ public class HardwareEngine : IDisposable
 
     private static readonly Dictionary<string, (string BusType, bool IsHdd, bool IsRemovable)> _driveDescriptorCache = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<string, int> _driveDeviceNumberCache = new(StringComparer.OrdinalIgnoreCase);
+    private int _lastKnownPhysicalDriveCount = -1;
 
     private static readonly System.Text.RegularExpressions.Regex s_peCoreRegex =
         new(@"(P|E)-Core #(\d+)", System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
@@ -181,7 +182,7 @@ public class HardwareEngine : IDisposable
             IsControllerEnabled = true,
             IsNetworkEnabled = false,
             IsStorageEnabled = true,
-            IsBatteryEnabled = false
+            IsBatteryEnabled = true
         };
 
         _visitor = new UpdateVisitor();
@@ -299,6 +300,7 @@ public class HardwareEngine : IDisposable
     {
         var snap = new TelemetrySnapshot();
         var allSensors = new List<SensorRecord>();
+        IHardware? selectedGpu = null;
 
         // System Metadata (Universal & Personalized)
         try
@@ -768,6 +770,7 @@ public class HardwareEngine : IDisposable
                         .OrderByDescending(h => h.Name.Contains("Arc", StringComparison.OrdinalIgnoreCase))
                         .FirstOrDefault();
 
+            selectedGpu = gpu;
             if (gpu != null)
             {
                 snap.GpuAvailable = true;
@@ -960,6 +963,10 @@ public class HardwareEngine : IDisposable
                     snap.BatteryPercent = winBattery.Percent;
                 if (!snap.BatteryTimeRemaining.HasValue && winBattery.EstimatedTimeRemaining.HasValue)
                     snap.BatteryTimeRemaining = winBattery.EstimatedTimeRemaining;
+                if (snap.BatteryDischargeRateWatts == 0 && winBattery.DischargeRateWatts > 0)
+                    snap.BatteryDischargeRateWatts = winBattery.DischargeRateWatts;
+                if (snap.BatteryChargeRateWatts == 0 && winBattery.ChargeRateWatts > 0)
+                    snap.BatteryChargeRateWatts = winBattery.ChargeRateWatts;
             }
 
             if (snap.HasBattery)
@@ -978,11 +985,26 @@ public class HardwareEngine : IDisposable
             {
                 snap.TotalSystemPowerWatts = snap.BatteryDischargeRateWatts;
             }
-            else if (snap.TotalSystemPowerWatts == 0)
+            else if (snap.TotalSystemPowerWatts <= 0)
             {
                 if (snap.CpuPackagePower > 0 || snap.GpuPowerDraw > 0)
                 {
-                    snap.TotalSystemPowerWatts = snap.CpuPackagePower + snap.GpuPowerDraw;
+                    bool isSharedApuRail = snap.CpuPackagePower > 0 && (
+                        (selectedGpu != null && (
+                            (selectedGpu.HardwareType == HardwareType.GpuIntel && !selectedGpu.Name.Contains("Arc", StringComparison.OrdinalIgnoreCase)) ||
+                            (selectedGpu.HardwareType == HardwareType.GpuAmd &&
+                             !selectedGpu.Name.Contains("RX ", StringComparison.OrdinalIgnoreCase) &&
+                             !selectedGpu.Name.Contains(" Radeon PRO ", StringComparison.OrdinalIgnoreCase))))
+                        || (!string.IsNullOrEmpty(snap.GpuName) && (
+                            snap.GpuName.Contains("Radeon(TM) Graphics", StringComparison.OrdinalIgnoreCase) ||
+                            snap.GpuName.Contains("Iris", StringComparison.OrdinalIgnoreCase) ||
+                            snap.GpuName.Contains("UHD Graphics", StringComparison.OrdinalIgnoreCase) ||
+                            System.Text.RegularExpressions.Regex.IsMatch(snap.GpuName, @"Radeon\s+\d{3}M", System.Text.RegularExpressions.RegexOptions.IgnoreCase)))
+                    );
+
+                    snap.TotalSystemPowerWatts = isSharedApuRail
+                        ? Math.Max(snap.CpuPackagePower, snap.GpuPowerDraw)
+                        : (snap.CpuPackagePower + snap.GpuPowerDraw);
                 }
             }
         }
@@ -999,6 +1021,12 @@ public class HardwareEngine : IDisposable
             for (int i = 0; i < physicalDisks.Count; i++)
             {
                 var st = physicalDisks[i];
+                string idStr = st.Identifier.ToString();
+                int slashIdx = idStr.LastIndexOf('/');
+                if (slashIdx < 0 || !int.TryParse(idStr.AsSpan(slashIdx + 1), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out int physDriveNum))
+                {
+                    physDriveNum = i;
+                }
                 float pTemp = 0f;
                 float pRead = 0f;
                 float pWrite = 0f;
@@ -1050,7 +1078,7 @@ public class HardwareEngine : IDisposable
                     }
                 }
 
-                physTelemetry[i] = (st.Name, pTemp, hasSmart, pHealth, pTbw, pRead, pWrite);
+                physTelemetry[physDriveNum] = (st.Name, pTemp, hasSmart, pHealth, pTbw, pRead, pWrite);
             }
 
             // Query Windows Disk Performance Counters for real-time accurate throughput
@@ -1070,6 +1098,8 @@ public class HardwareEngine : IDisposable
             if (_cachedPartitions.Count == 0 || (nowUtc - _lastDrivePartitionRefresh).TotalSeconds >= 10.0)
             {
                 _lastDrivePartitionRefresh = nowUtc;
+                lock (_driveDescriptorCache) { _driveDescriptorCache.Clear(); }
+                lock (_driveDeviceNumberCache) { _driveDeviceNumberCache.Clear(); }
                 _cachedPartitions.Clear();
                 foreach (var drive in DriveInfo.GetDrives())
                 {
@@ -1114,6 +1144,18 @@ public class HardwareEngine : IDisposable
                 }
             }
 
+                int currentPhysCount = _cachedPartitions.Where(p => p.DeviceNumber >= 0).Select(p => p.DeviceNumber).Distinct().Count();
+                if (_lastKnownPhysicalDriveCount >= 0 && currentPhysCount != _lastKnownPhysicalDriveCount && _computer != null)
+                {
+                    try
+                    {
+                        _computer.IsStorageEnabled = false;
+                        _computer.IsStorageEnabled = true;
+                    }
+                    catch { }
+                }
+                _lastKnownPhysicalDriveCount = currentPhysCount;
+
             for (int i = 0; i < _cachedPartitions.Count; i++)
             {
                 var cp = _cachedPartitions[i];
@@ -1129,9 +1171,9 @@ public class HardwareEngine : IDisposable
                 float dRead = 0f;
                 float dWrite = 0f;
 
-                if (!cp.IsRemovable)
+                if (cp.DeviceNumber >= 0)
                 {
-                    int targetIdx = (cp.DeviceNumber >= 0 && cp.DeviceNumber < physicalDisks.Count) ? cp.DeviceNumber : 0;
+                    int targetIdx = cp.DeviceNumber;
                     if (physTelemetry.TryGetValue(targetIdx, out var pt))
                     {
                         physicalModel = pt.Name;
@@ -1346,7 +1388,38 @@ public class HardwareEngine : IDisposable
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool GetSystemPowerStatus(out SYSTEM_POWER_STATUS lpSystemPowerStatus);
 
-    private static (bool HasBattery, bool IsAcConnected, float Percent, TimeSpan? EstimatedTimeRemaining) GetWindowsBatteryStatus()
+    [DllImport("powrprof.dll", SetLastError = true)]
+    private static extern int CallNtPowerInformation(
+        int informationLevel,
+        IntPtr lpInputBuffer,
+        int nInputBufferSize,
+        out SYSTEM_BATTERY_STATE lpOutputBuffer,
+        int nOutputBufferSize);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct SYSTEM_BATTERY_STATE
+    {
+        [MarshalAs(UnmanagedType.I1)]
+        public bool AcOnLine;
+        [MarshalAs(UnmanagedType.I1)]
+        public bool BatteryPresent;
+        [MarshalAs(UnmanagedType.I1)]
+        public bool Charging;
+        [MarshalAs(UnmanagedType.I1)]
+        public bool Discharging;
+        public byte Spare1;
+        public byte Spare2;
+        public byte Spare3;
+        public byte Spare4;
+        public uint MaxCapacity;
+        public uint RemainingCapacity;
+        public int Rate;
+        public uint EstimatedTime;
+        public uint DefaultAlert1;
+        public uint DefaultAlert2;
+    }
+
+    private static (bool HasBattery, bool IsAcConnected, float Percent, TimeSpan? EstimatedTimeRemaining, float DischargeRateWatts, float ChargeRateWatts) GetWindowsBatteryStatus()
     {
         try
         {
@@ -1356,11 +1429,33 @@ public class HardwareEngine : IDisposable
                 bool isAc = status.ACLineStatus == 1;
                 float pct = status.BatteryLifePercent <= 100 ? status.BatteryLifePercent : 0;
                 TimeSpan? timeRemaining = status.BatteryLifeTime > 0 ? TimeSpan.FromSeconds(status.BatteryLifeTime) : null;
-                return (hasBat, isAc, pct, timeRemaining);
+                float dischargeRate = 0f;
+                float chargeRate = 0f;
+                try
+                {
+                    if (CallNtPowerInformation(5, IntPtr.Zero, 0, out var state, Marshal.SizeOf<SYSTEM_BATTERY_STATE>()) == 0 && state.BatteryPresent)
+                    {
+                        hasBat = true;
+                        isAc = state.AcOnLine;
+                        if (pct == 0 && state.MaxCapacity > 0)
+                        {
+                            pct = Math.Clamp(((float)state.RemainingCapacity / state.MaxCapacity) * 100f, 0f, 100f);
+                        }
+                        if (state.Rate != 0)
+                        {
+                            float rw = Math.Abs(state.Rate) / 1000f;
+                            if (state.Discharging) dischargeRate = rw;
+                            else if (state.Charging) chargeRate = rw;
+                        }
+                    }
+                }
+                catch { }
+
+                return (hasBat, isAc, pct, timeRemaining, dischargeRate, chargeRate);
             }
         }
         catch { }
-        return (false, true, 0, null);
+        return (false, true, 0, null, 0f, 0f);
     }
 
     public void Dispose()

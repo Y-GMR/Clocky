@@ -1631,7 +1631,7 @@
                                   RowDetailsVisibilityMode="Visible"
                                   PreviewMouseLeftButtonDown="GridAllProcesses_PreviewMouseLeftButtonDown"
                                   PreviewMouseRightButtonUp="GridAllProcesses_PreviewMouseRightButtonUp"
-                                  VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling" ScrollViewer.CanContentScroll="True" EnableRowVirtualization="True" EnableColumnVirtualization="True">
+                                  VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Standard" VirtualizingPanel.ScrollUnit="Pixel" VirtualizingPanel.CacheLength="2,2" VirtualizingPanel.CacheLengthUnit="Page" ScrollViewer.CanContentScroll="True" EnableRowVirtualization="True" EnableColumnVirtualization="True">
                             <DataGrid.RowStyle>
                                 <Style TargetType="{x:Type DataGridRow}">
                                     <Setter Property="Background" Value="{DynamicResource BrushCardBg}"/>

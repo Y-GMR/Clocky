@@ -1,8 +1,8 @@
-{
-  "version": "1.4.0",
-  "releaseDate": "2026-10-16",
-  "changelog": "Batch GPU/process and network polling optimizations, native SMBIOS and Win32 battery IOCTL universality, process table pause toggle, flicker-free in-place row updates, and multi-dropdown expansion.",
-  "downloadUrl": "https://github.com/Y-GMR/Clocky/releases/latest/download/Clocky.exe",
-  "mandatory": false,
-  "sha256": "77dda42266492b2ba3b46eb392a0f95a62b837871f4a70ce39e4c573ce57455f"
+﻿{
+    "version":  "1.4.1",
+    "releaseDate":  "2026-11-03",
+    "changelog":  "Fix process table expanded row details vanishing during scrolling, disambiguate external SSD SMART health and device matching, universalize laptop battery wattage via kernel CallNtPowerInformation, and prevent AMD APU power double-counting.",
+    "downloadUrl":  "https://github.com/Y-GMR/Clocky/releases/latest/download/Clocky.exe",
+    "mandatory":  false,
+    "sha256":  "386c404db5f152a8fc2ebd616d406f4e76b450c3506bd1c12fd1639c6e7cf08d"
 }
