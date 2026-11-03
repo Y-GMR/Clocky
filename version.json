@@ -1,8 +1,8 @@
-﻿{
-    "version":  "1.4.1",
-    "releaseDate":  "2026-11-03",
-    "changelog":  "Fix process table expanded row details vanishing during scrolling, disambiguate external SSD SMART health and device matching, universalize laptop battery wattage via kernel CallNtPowerInformation, and prevent AMD APU power double-counting.",
-    "downloadUrl":  "https://github.com/Y-GMR/Clocky/releases/latest/download/Clocky.exe",
-    "mandatory":  false,
-    "sha256":  "386c404db5f152a8fc2ebd616d406f4e76b450c3506bd1c12fd1639c6e7cf08d"
+{
+  "version": "1.4.1",
+  "releaseDate": "2026-11-03",
+  "changelog": "Fix process table expanded row details vanishing during scrolling, disambiguate external SSD SMART health and device matching, universalize laptop battery wattage via kernel CallNtPowerInformation, and prevent AMD APU power double-counting.",
+  "downloadUrl": "https://github.com/Y-GMR/Clocky/releases/latest/download/Clocky.exe",
+  "mandatory": false,
+  "sha256": "70f50e2f43b275c61bb3158db64826afc0a1f9fe4217a61012e136e68cf603f5"
 }
